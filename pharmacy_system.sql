@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 17, 2025 at 12:19 PM
+-- Generation Time: Oct 17, 2025 at 05:57 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -61,6 +61,8 @@ CREATE TABLE `orders` (
   `tax_amount` decimal(10,2) DEFAULT 0.00,
   `total_amount` decimal(10,2) NOT NULL,
   `payment_method` enum('cash','card','other') DEFAULT 'cash',
+  `status` varchar(20) DEFAULT 'completed',
+  `refund_amount` decimal(10,2) DEFAULT 0.00,
   `order_date` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -68,20 +70,22 @@ CREATE TABLE `orders` (
 -- Dumping data for table `orders`
 --
 
-INSERT INTO `orders` (`id`, `order_number`, `cashier_id`, `subtotal`, `discount_amount`, `tax_amount`, `total_amount`, `payment_method`, `order_date`) VALUES
-(1, 'ORD-20250915-7572', 1, 15.00, 0.00, 1.50, 16.50, 'card', '2025-09-15 15:02:09'),
-(2, 'ORD-20250920-0744', 1, 50.00, 0.00, 5.00, 55.00, 'cash', '2025-09-20 15:24:39'),
-(3, 'ORD-20251009-2952', 1, 13.50, 0.00, 1.35, 14.85, 'cash', '2025-10-09 11:55:11'),
-(4, 'ORD-20251009-6310', 1, 50.00, 0.00, 5.00, 55.00, 'cash', '2025-10-09 14:45:44'),
-(5, 'ORD-20251015-3432', 1, 10.00, 0.00, 1.00, 11.00, 'cash', '2025-10-15 11:23:24'),
-(6, 'ORD-20251015-8692', 1, 50.00, 0.00, 5.00, 55.00, 'cash', '2025-10-15 16:45:44'),
-(7, 'ORD-20251016-7255', 1, 450.00, 0.00, 45.00, 495.00, 'cash', '2025-10-16 10:05:24'),
-(8, 'ORD-20251016-2780', 1, 13.60, 0.00, 1.36, 14.96, 'cash', '2025-10-16 12:23:39'),
-(9, 'ORD-20251016-6104', 1, 15.00, 0.00, 1.50, 16.50, 'cash', '2025-10-16 12:53:24'),
-(10, 'ORD-20251016-9986', 1, 10.00, 0.00, 1.00, 11.00, 'cash', '2025-10-16 13:19:44'),
-(11, 'ORD-20251016-4973', 1, 20.00, 0.00, 2.00, 22.00, 'cash', '2025-10-16 13:34:13'),
-(12, 'ORD-20251017-1599', 1, 10.00, 0.00, 1.00, 11.00, 'cash', '2025-10-17 08:23:43'),
-(13, 'ORD-20251017-7727', 1, 10.00, 0.50, 0.95, 10.45, 'cash', '2025-10-17 08:24:28');
+INSERT INTO `orders` (`id`, `order_number`, `cashier_id`, `subtotal`, `discount_amount`, `tax_amount`, `total_amount`, `payment_method`, `status`, `refund_amount`, `order_date`) VALUES
+(1, 'ORD-20250915-7572', 1, 15.00, 0.00, 1.50, 16.50, 'card', 'completed', 0.00, '2025-09-15 15:02:09'),
+(2, 'ORD-20250920-0744', 1, 50.00, 0.00, 5.00, 55.00, 'cash', 'completed', 0.00, '2025-09-20 15:24:39'),
+(3, 'ORD-20251009-2952', 1, 13.50, 0.00, 1.35, 14.85, 'cash', 'completed', 0.00, '2025-10-09 11:55:11'),
+(4, 'ORD-20251009-6310', 1, 50.00, 0.00, 5.00, 55.00, 'cash', 'completed', 0.00, '2025-10-09 14:45:44'),
+(5, 'ORD-20251015-3432', 1, 10.00, 0.00, 1.00, 11.00, 'cash', 'completed', 0.00, '2025-10-15 11:23:24'),
+(6, 'ORD-20251015-8692', 1, 50.00, 0.00, 5.00, 55.00, 'cash', 'completed', 0.00, '2025-10-15 16:45:44'),
+(7, 'ORD-20251016-7255', 1, 450.00, 0.00, 45.00, 495.00, 'cash', 'completed', 0.00, '2025-10-16 10:05:24'),
+(8, 'ORD-20251016-2780', 1, 13.60, 0.00, 1.36, 14.96, 'cash', 'completed', 0.00, '2025-10-16 12:23:39'),
+(9, 'ORD-20251016-6104', 1, 15.00, 0.00, 1.50, 16.50, 'cash', 'completed', 0.00, '2025-10-16 12:53:24'),
+(10, 'ORD-20251016-9986', 1, 10.00, 0.00, 1.00, 11.00, 'cash', 'completed', 0.00, '2025-10-16 13:19:44'),
+(11, 'ORD-20251016-4973', 1, 20.00, 0.00, 2.00, 22.00, 'cash', 'completed', 0.00, '2025-10-16 13:34:13'),
+(12, 'ORD-20251017-1599', 1, 10.00, 0.00, 1.00, 11.00, 'cash', 'completed', 0.00, '2025-10-17 08:23:43'),
+(13, 'ORD-20251017-7727', 1, 10.00, 0.50, 0.95, 10.45, 'cash', 'completed', 0.00, '2025-10-17 08:24:28'),
+(14, 'ORD-20251017-5200', 1, 99.99, 5.00, 9.50, 104.49, 'cash', 'cancelled', 0.00, '2025-10-17 10:56:38'),
+(15, 'ORD-20251017-6425', 1, 5.01, 0.25, 0.48, 5.24, 'cash', 'completed', 0.00, '2025-10-17 11:47:29');
 
 -- --------------------------------------------------------
 
@@ -114,7 +118,9 @@ INSERT INTO `order_items` (`id`, `order_id`, `product_id`, `quantity`, `unit_pri
 (12, 10, 3, 1, 10.00, 10.00),
 (13, 11, 3, 2, 10.00, 20.00),
 (14, 12, 3, 1, 10.00, 10.00),
-(15, 13, 3, 1, 10.00, 10.00);
+(15, 13, 3, 1, 10.00, 10.00),
+(16, 14, 14, 1, 99.99, 99.99),
+(17, 15, 2, 1, 5.01, 5.01);
 
 -- --------------------------------------------------------
 
@@ -125,13 +131,14 @@ INSERT INTO `order_items` (`id`, `order_id`, `product_id`, `quantity`, `unit_pri
 CREATE TABLE `products` (
   `id` int(11) NOT NULL,
   `name` varchar(200) NOT NULL,
-  `barcode` varchar(100) NULL,
+  `barcode` varchar(100) DEFAULT NULL,
   `category_id` int(11) DEFAULT NULL,
   `price` decimal(10,2) NOT NULL,
   `cost` decimal(10,2) NOT NULL,
   `stock_quantity` int(11) DEFAULT 0,
   `min_stock_level` int(11) DEFAULT 5,
   `expiry_date` date NOT NULL,
+  `manufacturing_date` date DEFAULT NULL,
   `manufacturer` varchar(255) NOT NULL,
   `description` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
@@ -143,12 +150,16 @@ CREATE TABLE `products` (
 -- Dumping data for table `products`
 --
 
-INSERT INTO `products` (`id`, `name`, `barcode`, `category_id`, `price`, `cost`, `stock_quantity`, `min_stock_level`, `expiry_date`, `manufacturer`, `description`, `created_at`, `updated_at`, `is_active`) VALUES
-(1, 'Paracetamol 500mg', '1111111111111', 1, 1.50, 0.80, 191, 20, '2026-12-31', 'GSK Pharma', 'Pain relief medicine', '2025-09-15 14:50:17', '2025-10-09 11:55:11', 1),
-(2, 'Amoxicillin 250mg', '2222222222222', 2, 5.00, 2.50, 80, 10, '2027-01-15', 'Pfizer', 'Antibiotic medicine', '2025-09-15 14:50:17', '2025-10-16 12:54:22', 1),
-(3, 'Vitamin C 1000mg', '3333333333333', 3, 10.00, 6.00, 143, 15, '2026-05-20', 'Abbott', 'Immunity booster supplement', '2025-09-15 14:50:17', '2025-10-17 08:24:28', 1),
-(12, 'Hello', '123124124', 2, 235.00, 135.00, 10, 5, '2029-05-05', '', '', '2025-10-16 13:21:50', '2025-10-16 13:36:57', 0),
-(13, 'mtk', '24343545', 1, 44.00, 33.00, 10, 5, '2025-01-11', '', '', '2025-10-16 14:06:11', '2025-10-17 08:03:29', 0);
+INSERT INTO `products` (`id`, `name`, `barcode`, `category_id`, `price`, `cost`, `stock_quantity`, `min_stock_level`, `expiry_date`, `manufacturing_date`, `manufacturer`, `description`, `created_at`, `updated_at`, `is_active`) VALUES
+(1, 'Paracetamol 500mg', '1111111111111', 1, 1.50, 0.80, 191, 20, '2026-12-31', NULL, 'GSK Pharma', 'Pain relief medicine', '2025-09-15 14:50:17', '2025-10-09 11:55:11', 1),
+(2, 'Amoxicillin 250mg', '2222222222222', 2, 5.00, 2.50, 79, 10, '2027-01-15', NULL, 'Pfizer', 'Antibiotic medicine', '2025-09-15 14:50:17', '2025-10-17 11:47:29', 1),
+(3, 'Vitamin C 1000mg', '3333333333333', 3, 10.00, 6.00, 143, 15, '2026-05-20', NULL, 'Abbott', 'Immunity booster supplement', '2025-09-15 14:50:17', '2025-10-17 08:24:28', 1),
+(12, 'Hello', '123124124', 2, 235.00, 135.00, 10, 5, '2029-05-05', NULL, '', '', '2025-10-16 13:21:50', '2025-10-16 13:36:57', 0),
+(13, 'mtk', '24343545', 1, 44.00, 33.00, 10, 5, '2025-01-11', NULL, '', '', '2025-10-16 14:06:11', '2025-10-17 08:03:29', 0),
+(14, 'Sample Product', '5763330585628', 2, 99.99, 59.99, 49, 10, '2000-01-02', NULL, 'JLKjlka', 'Sample product description for testing.', '2025-10-17 10:31:26', '2025-10-17 15:53:30', 0),
+(15, 'Sample Product 3', '', 2, 99.99, 59.99, 50, 10, '2026-03-04', NULL, '', 'Sample product description for testing.', '2025-10-17 10:32:10', '2025-10-17 15:53:25', 0),
+(16, 'Sample Product', '4060255416123', 2, 99.99, 59.99, 50, 10, '2026-10-17', '2025-04-17', 'Sample Manufacturer', 'Sample product description for testing.', '2025-10-17 15:53:16', '2025-10-17 15:53:22', 0),
+(17, 'Sample Product', '0251258107983', 2, 99.99, 59.99, 50, 10, '2026-10-17', '2025-04-17', 'Sample Manufacturer', 'Sample product description for testing.', '2025-10-17 15:53:40', '2025-10-17 15:53:40', 1);
 
 -- --------------------------------------------------------
 
@@ -212,7 +223,8 @@ ALTER TABLE `orders`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `order_number` (`order_number`),
   ADD KEY `idx_orders_date` (`order_date`),
-  ADD KEY `idx_orders_cashier` (`cashier_id`);
+  ADD KEY `idx_orders_cashier` (`cashier_id`),
+  ADD KEY `idx_order_status` (`status`);
 
 --
 -- Indexes for table `order_items`
@@ -259,19 +271,19 @@ ALTER TABLE `categories`
 -- AUTO_INCREMENT for table `orders`
 --
 ALTER TABLE `orders`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT for table `order_items`
 --
 ALTER TABLE `order_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18;
 
 --
 -- AUTO_INCREMENT for table `products`
 --
 ALTER TABLE `products`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18;
 
 --
 -- AUTO_INCREMENT for table `settings`
