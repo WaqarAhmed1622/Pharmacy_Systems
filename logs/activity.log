@@ -57,3 +57,35 @@
 2025-10-17 12:31:26 - User 1: Added product - Product: Sample Product
 2025-10-17 12:32:10 - User 1: Added product - Product: Sample Product 3
 2025-10-17 13:48:13 - User 1: User logged out - 
+2025-10-17 16:17:54 - User 1: Order Status Updated - Order ID: 15, New Status: pending
+2025-10-17 16:19:10 - User 1: Order Status Updated - Order ID: 15, New Status: completed
+2025-10-17 16:32:45 - User 1: Order Status Updated - Order ID: 15, New Status: completed
+2025-10-17 16:32:48 - User 1: Order Status Updated - Order ID: 15, New Status: completed
+2025-10-17 16:32:54 - User 1: Order Status Updated - Order ID: 15, New Status: cancelled
+2025-10-17 16:33:32 - User 1: Order Status Updated - Order ID: 15, New Status: cancelled
+2025-10-17 16:39:48 - User 1: Order Status Updated - Order ID: 15, New Status: completed
+2025-10-17 16:40:10 - User 1: Order Status Updated - Order ID: 15, New Status: completed
+2025-10-17 16:40:24 - User 1: Order Status Updated - Order ID: 15, New Status: completed
+2025-10-17 16:40:30 - User 1: Order Status Updated - Order ID: 15, New Status: completed
+2025-10-17 17:14:39 - User 1: Order Status Updated - Order ID: 15, New Status: pending
+2025-10-17 17:15:20 - User 1: Order Status Updated - Order ID: 15, New Status: completed
+2025-10-17 17:16:50 - User 1: Order Status Updated - Order ID: 15, New Status: completed
+2025-10-17 17:21:44 - User 1: Order Status Updated - Order ID: 14, New Status: cancelled
+2025-10-17 17:22:57 - User 1: Order Status Updated - Order ID: 14, New Status: cancelled
+2025-10-17 17:22:58 - User 1: Order Status Updated - Order ID: 14, New Status: cancelled
+2025-10-17 17:23:06 - User 1: Order Status Updated - Order ID: 14, New Status: cancelled
+2025-10-17 17:23:10 - User 1: Order Status Updated - Order ID: 14, New Status: cancelled
+2025-10-17 17:23:15 - User 1: Order Status Updated - Order ID: 14, New Status: cancelled
+2025-10-17 17:23:21 - User 1: Order Status Updated - Order ID: 14, New Status: cancelled
+2025-10-17 17:26:31 - User 1: Order Status Updated - Order ID: 15, New Status: completed
+2025-10-17 17:26:36 - User 1: Order Status Updated - Order ID: 15, New Status: cancelled
+2025-10-17 17:27:27 - User 1: Order Status Updated - Order ID: 15, New Status: cancelled
+2025-10-17 17:28:48 - User 1: Order Status Updated - Order ID: 15, New Status: cancelled
+2025-10-17 17:28:50 - User 1: Order Status Updated - Order ID: 15, New Status: cancelled
+2025-10-17 17:31:47 - User 1: Order Status Updated - Order ID: 15, New Status: cancelled
+2025-10-17 17:32:47 - User 1: Order Status Updated - Order ID: 15, New Status: cancelled
+2025-10-17 17:32:48 - User 1: Order Status Updated - Order ID: 15, New Status: cancelled
+2025-10-17 17:33:20 - User 1: Order Status Updated - Order ID: 15, New Status: cancelled
+2025-10-17 17:33:26 - User 1: Order Status Updated - Order ID: 15, New Status: completed
+2025-10-17 17:35:18 - User 1: Order Status Updated - Order ID: 15, New Status: pending
+2025-10-17 17:36:02 - User 1: Order Status Updated - Order ID: 15, New Status: completed

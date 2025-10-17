@@ -1,11 +1,13 @@
 <?php
+
+ob_start();
 /**
  * Orders History Page
  * View order history and details with discount information
- */
+*/
 
-require_once '../includes/header.php';
 // Handle order status update (add this after the search params section, before the queries)
+require_once '../includes/header.php';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
     $orderId = (int)$_POST['order_id'];
@@ -25,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
         if (executeNonQuery($updateQuery, 'sdi', [$newStatus, $refundAmount, $orderId])) {
             // Log the activity
             logActivity('Order Returned', $_SESSION['user_id'], 
-                "Order ID: $orderId, Amount Refunded: " . formatCurrency($refundAmount));
+            "Order ID: $orderId, Amount Refunded: " . formatCurrency($refundAmount));
             
             $success = "Order marked as returned. Refund amount: " . formatCurrency($refundAmount);
         } else {
@@ -36,11 +38,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
         $updateQuery = "UPDATE orders SET status = ? WHERE id = ?";
         if (executeNonQuery($updateQuery, 'si', [$newStatus, $orderId])) {
             logActivity('Order Status Updated', $_SESSION['user_id'], 
-                "Order ID: $orderId, New Status: $newStatus");
+            "Order ID: $orderId, New Status: $newStatus");
             
             $success = "Order status updated successfully.";
+            header("Location: ?view=" . $orderId);
+            exit();
         } else {
-            $error = "Failed to update order status.";
+            if ($newStatus == 'returned' && $order['status'] != 'returned') {
+                header("Location: ?view=" . $orderId);
+                exit();
+            }
         }
     }
 }
@@ -120,11 +127,7 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
             </span>
 
             <!-- Status Update Button - ADD THIS -->
-            <button type="button" class="btn btn-warning me-2" 
-                    data-bs-toggle="modal" 
-                    data-bs-target="#statusModal">
-                <i class="fas fa-sync"></i> Update Status
-            </button>
+            <!-- Status Update Button -->
 
             <!-- View Details Button -->
             <a href="?view=<?php echo $orderDetails['id']; ?>" class="btn btn-info me-2">
@@ -148,9 +151,9 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
         <div class="modal-dialog">
             <div class="modal-content">
                 <form method="POST">
+                    <input type="hidden" name="order_id" id="modalOrderId">
                     <div class="modal-header">
                         <h5 class="modal-title">Update Order Status</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
                         <input type="hidden" name="order_id" value="<?php echo $orderDetails['id']; ?>">
@@ -162,16 +165,13 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                             </div>
                         </div>
                         
-                        <div class="mb-3">
-                            <label class="form-label">New Status *</label>
-                            <select name="order_status" class="form-select" required>
-                                <option value="">Select Status</option>
-                                <option value="pending">Pending</option>
-                                <option value="completed">Completed</option>
-                                <option value="returned">Returned</option>
-                                <option value="cancelled">Cancelled</option>
-                            </select>
-                        </div>
+<div class="mb-3">
+    <label class="form-label">New Status *</label>
+    <select name="order_status" id="statusSelect" class="form-select" required>
+        <option value="completed" <?php echo $orderDetails['status'] == 'completed' ? 'selected' : ''; ?>>Completed</option>
+        <option value="returned" <?php echo $orderDetails['status'] == 'returned' ? 'selected' : ''; ?>>Returned</option>
+    </select>
+</div>
                         
                         <div class="alert alert-warning" id="returnWarning" style="display: none;">
                             <i class="fas fa-exclamation-triangle"></i>
@@ -181,8 +181,7 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" name="update_status" class="btn btn-primary">Update Status</button>
+                     <button type="submit" name="update_status" class="mb-3 btn btn-primary">Update Status</button>
                     </div>
                 </form>
             </div>
@@ -190,16 +189,28 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
     </div>
 
     <script>
-    // Show warning when return is selected
-    document.querySelector('[name="order_status"]').addEventListener('change', function() {
-        const returnWarning = document.getElementById('returnWarning');
-        if (this.value === 'returned') {
-            returnWarning.style.display = 'block';
-        } else {
-            returnWarning.style.display = 'none';
-        }
-    });
-    </script>   
+// Global function to open status modal from list or details view
+function openStatusModal(orderId, currentStatus) {
+    document.getElementById('modalOrderId').value = orderId;
+    document.getElementById('statusSelect').value = currentStatus;
+    
+    // Hide warning initially
+    document.getElementById('returnWarning').style.display = 'none';
+    
+    const statusModal = new bootstrap.Modal(document.getElementById('statusModal'));
+    statusModal.show();
+}
+
+// Show warning when return is selected
+document.getElementById('statusSelect').addEventListener('change', function() {
+    const returnWarning = document.getElementById('returnWarning');
+    if (this.value === 'returned') {
+        returnWarning.style.display = 'block';
+    } else {
+        returnWarning.style.display = 'none';
+    }
+});
+</script>
     <div class="row">
         <div class="col-md-4">
             <div class="card">
@@ -294,6 +305,7 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
     </div>
 
 <?php else: ?>
+    
     <!-- Orders List View -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3><i class="fas fa-receipt"></i> Orders History</h3>
@@ -390,15 +402,15 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                         </span>
                                     </td>
                                     <td>
-                                        <div class="btn-group btn-group-sm">
-                                            <a href="?view=<?php echo $order['id']; ?>" class="btn btn-outline-primary" title="View Details">
-                                                <i class="fas fa-eye"></i>
-                                            </a>
-                                            <a href="receipt.php?order_id=<?php echo $order['id']; ?>" class="btn btn-outline-success" title="Print Receipt" target="_blank">
-                                                <i class="fas fa-print"></i>
-                                            </a>
-                                        </div>
-                                    </td>
+    <div class="btn-group btn-group-sm">
+        <a href="?view=<?php echo $order['id']; ?>" class="btn btn-outline-primary" title="View Details">
+            <i class="fas fa-eye"></i>
+        </a>
+        <a href="receipt.php?order_id=<?php echo $order['id']; ?>" class="btn btn-outline-success" title="Print Receipt" target="_blank">
+            <i class="fas fa-print"></i>
+        </a>
+    </div>
+</td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
