@@ -165,33 +165,87 @@ $outOfStockCount = count(array_filter($products, function($product) {
                                                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                                     </div>
                                                     <div class="modal-body">
-                                                        <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
-                                                        
-                                                        <div class="mb-3">
-                                                            <label class="form-label">Current Stock</label>
-                                                            <input type="text" class="form-control" value="<?php echo $product['stock_quantity']; ?>" readonly>
-                                                        </div>
-                                                        
-                                                        <div class="mb-3">
-                                                            <label class="form-label">New Stock Quantity *</label>
-                                                            <input type="number" name="new_stock" class="form-control" min="0" 
-                                                                   value="<?php echo $product['stock_quantity']; ?>" required>
-                                                        </div>
-                                                        
-                                                        <div class="mb-3">
-                                                            <label class="form-label">Reason for Change</label>
-                                                            <select name="reason" class="form-select" required>
-                                                                <option value="">Select Reason</option>
-                                                                <option value="Stock Received">Stock Received</option>
-                                                                <option value="Stock Adjustment">Stock Adjustment</option>
-                                                                <option value="Damaged Items">Damaged Items</option>
-                                                                <option value="Lost Items">Lost Items</option>
-                                                                <option value="Expired Items">Expired Items</option>
-                                                                <option value="Inventory Count">Inventory Count</option>
-                                                                <option value="Other">Other</option>
-                                                            </select>
-                                                        </div>
-                                                    </div>
+    <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
+    
+    <div class="mb-3">
+        <label class="form-label">Current Stock</label>
+        <input type="text" class="form-control" value="<?php echo $product['stock_quantity']; ?>" readonly>
+    </div>
+    
+    <div class="mb-3">
+    <label class="form-label">Adjust Stock Quantity</label>
+    
+    <div class="mb-2">
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="adjustment_type_<?php echo $product['id']; ?>" 
+                   id="increase_<?php echo $product['id']; ?>" value="increase" checked>
+            <label class="form-check-label" for="increase_<?php echo $product['id']; ?>">
+                Increase
+            </label>
+        </div>
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="adjustment_type_<?php echo $product['id']; ?>" 
+                   id="decrease_<?php echo $product['id']; ?>" value="decrease">
+            <label class="form-check-label" for="decrease_<?php echo $product['id']; ?>">
+                Decrease
+            </label>
+        </div>
+    </div>
+    
+    <div class="input-group">
+        <input type="number" 
+               id="adjust_stock_<?php echo $product['id']; ?>" 
+               class="form-control" 
+               value="0" 
+               min="0"
+               placeholder="Enter quantity">
+        <span class="input-group-text">units</span>
+    </div>
+    <small class="text-muted">Select Increase or Decrease, then enter the quantity</small>
+</div>
+
+<div class="mb-3">
+    <label class="form-label">New Stock Quantity *</label>
+    <input type="number" 
+           name="new_stock" 
+           id="new_stock_<?php echo $product['id']; ?>" 
+           class="form-control" 
+           min="0" 
+           value="<?php echo $product['stock_quantity']; ?>" 
+           readonly 
+           required 
+           data-current="<?php echo $product['stock_quantity']; ?>">
+    <small class="text-muted">This will update automatically</small>
+</div>
+    
+    <div class="mb-3">
+        <label class="form-label">New Stock Quantity *</label>
+        <input type="number" 
+               name="new_stock" 
+               id="new_stock_<?php echo $product['id']; ?>" 
+               class="form-control" 
+               min="0" 
+               value="<?php echo $product['stock_quantity']; ?>" 
+               readonly 
+               required 
+               data-current="<?php echo $product['stock_quantity']; ?>">
+        <small class="text-muted">This will be automatically calculated based on adjustments</small>
+    </div>
+    
+    <div class="mb-3">
+        <label class="form-label">Reason for Change</label>
+        <select name="reason" class="form-select" required>
+            <option value="">Select Reason</option>
+            <option value="Stock Received">Stock Received</option>
+            <option value="Stock Adjustment">Stock Adjustment</option>
+            <option value="Damaged Items">Damaged Items</option>
+            <option value="Lost Items">Lost Items</option>
+            <option value="Expired Items">Expired Items</option>
+            <option value="Inventory Count">Inventory Count</option>
+            <option value="Other">Other</option>
+        </select>
+    </div>
+</div>
                                                     <div class="modal-footer">
                                                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                                         <button type="submit" name="update_stock" class="btn btn-primary">Update Stock</button>
@@ -241,6 +295,67 @@ window.addEventListener('click', function(event) {
         event.target.classList.remove('show');
         document.body.classList.remove('modal-open');
     }
+});
+
+// Stock increment/decrement functions
+
+// Stock adjustment function
+function updateStockDisplay(productId) {
+    const adjustInput = document.getElementById('adjust_stock_' + productId);
+    const newStockInput = document.getElementById('new_stock_' + productId);
+    const typeIncrease = document.getElementById('increase_' + productId).checked;
+    const currentStock = parseInt(newStockInput.getAttribute('data-current'));
+    
+    let adjustValue = parseInt(adjustInput.value) || 0;
+    
+    if (typeIncrease) {
+        newStockInput.value = currentStock + adjustValue;
+    } else {
+        const newValue = currentStock - adjustValue;
+        newStockInput.value = newValue < 0 ? 0 : newValue;
+    }
+}
+
+// Reset adjustment when modal opens
+document.querySelectorAll('[data-bs-toggle="modal"]').forEach(function(button) {
+    button.addEventListener('click', function() {
+        var targetModal = document.querySelector(button.getAttribute('data-bs-target'));
+        if (targetModal) {
+            // Reset adjustment fields
+            const modalId = targetModal.id.replace('stockModal', '');
+            const adjustInput = document.getElementById('adjust_stock_' + modalId);
+            const newStockInput = document.getElementById('new_stock_' + modalId);
+            const currentStock = parseInt(newStockInput.getAttribute('data-current'));
+            
+            if (adjustInput && newStockInput) {
+                adjustInput.value = 0;
+                newStockInput.value = currentStock;
+            }
+            
+            targetModal.style.display = 'block';
+            targetModal.classList.add('show');
+            document.body.classList.add('modal-open');
+        }
+    });
+});
+
+// Add event listeners for stock adjustment
+document.querySelectorAll('[id^="adjust_stock_"]').forEach(function(input) {
+    input.addEventListener('change', function() {
+        const productId = this.id.replace('adjust_stock_', '');
+        updateStockDisplay(productId);
+    });
+    input.addEventListener('input', function() {
+        const productId = this.id.replace('adjust_stock_', '');
+        updateStockDisplay(productId);
+    });
+});
+
+document.querySelectorAll('[id^="increase_"], [id^="decrease_"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+        const productId = this.name.replace('adjustment_type_', '');
+        updateStockDisplay(productId);
+    });
 });
 </script>
 
