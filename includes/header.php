@@ -41,6 +41,7 @@ checkSessionTimeout();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pharmacy Management System</title>
+    <link rel="icon" href="./assets/favicon.jpg" type="image/x-icon">
     
     <!-- Embedded Bootstrap CSS (Offline) -->
     <style>
@@ -190,8 +191,10 @@ checkSessionTimeout();
             <!-- Sidebar -->
             <div class="col-md-3 col-lg-2 sidebar">
                 <div class="text-center mb-4">
-                    <h5 class="text-white">Pharmacy System</h5>
+                    <h5 style="color: white;">Pharmacy System</h5>
                     <small class="text-muted">Welcome, <?php echo sanitizeInput($_SESSION['full_name']); ?></small>
+                    <img src="./assets/favicon.jpg" width="80" height="80" class="rounded-circle mt-2" alt="Pharmacy Logo">
+
                 </div>
                 
                 <nav class="nav flex-column">
@@ -284,4 +287,4 @@ checkSessionTimeout();
                         <i class="fas fa-exclamation-triangle"></i> <?php echo $_SESSION['warning']; unset($_SESSION['warning']); ?>
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
-                <?php endif; ?>
+<?php endif; ?>
