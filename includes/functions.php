@@ -262,6 +262,16 @@ function calculateTax(float $amount): float {
 }
 
 /**
+ * Calculate discount amount
+ * @param float $amount Amount to apply discount on
+ * @return float Discount amount
+ */
+function calculateDiscount(float $amount): float {
+    $discountRate = (float) getSetting('discount_rate', 0); // default 0% if not set
+    return $amount * $discountRate;
+}
+
+/**
  * Log system activity (basic logging)
  * @param string $action Action performed
  * @param int $userId User ID

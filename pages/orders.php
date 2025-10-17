@@ -1,7 +1,7 @@
 <?php
 /**
  * Orders History Page
- * View order history and details
+ * View order history and details with discount information
  */
 
 require_once '../includes/header.php';
@@ -60,6 +60,9 @@ if (isset($_GET['view']) && is_numeric($_GET['view'])) {
         $orderItems = executeQuery($itemsQuery, 'i', [$orderId]);
     }
 }
+
+$discountRate = getSetting('discount_rate', 0) * 100;
+$taxRate = getSetting('tax_rate', 0.10) * 100;
 ?>
 
 <?php if ($orderDetails): ?>
@@ -104,6 +107,16 @@ if (isset($_GET['view']) && is_numeric($_GET['view'])) {
                             <td><strong>Subtotal:</strong></td>
                             <td><?php echo formatCurrency($orderDetails['subtotal']); ?></td>
                         </tr>
+                        <?php if (isset($orderDetails['discount_amount']) && $orderDetails['discount_amount'] > 0): ?>
+                        <tr class="table-warning">
+                            <td><strong>Discount:</strong></td>
+                            <td class="text-danger">-<?php echo formatCurrency($orderDetails['discount_amount']); ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>After Discount:</strong></td>
+                            <td><?php echo formatCurrency($orderDetails['subtotal'] - $orderDetails['discount_amount']); ?></td>
+                        </tr>
+                        <?php endif; ?>
                         <tr>
                             <td><strong>Tax:</strong></td>
                             <td><?php echo formatCurrency($orderDetails['tax_amount']); ?></td>
@@ -113,6 +126,13 @@ if (isset($_GET['view']) && is_numeric($_GET['view'])) {
                             <td><strong><?php echo formatCurrency($orderDetails['total_amount']); ?></strong></td>
                         </tr>
                     </table>
+                    
+                    <?php if (isset($orderDetails['discount_amount']) && $orderDetails['discount_amount'] > 0): ?>
+                    <div class="alert alert-success mt-3 mb-0">
+                        <i class="fas fa-tag"></i> <strong>Customer Saved:</strong><br>
+                        <?php echo formatCurrency($orderDetails['discount_amount']); ?>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -200,15 +220,17 @@ if (isset($_GET['view']) && is_numeric($_GET['view'])) {
                             <th>Order Number</th>
                             <th>Date</th>
                             <th>Cashier</th>
+                            <th>Subtotal</th>
+                            <th>Discount</th>
                             <th>Total Amount</th>
-                            <th>Payment Method</th>
+                            <th>Payment</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($orders)): ?>
                             <tr>
-                                <td colspan="6" class="text-center py-4">
+                                <td colspan="8" class="text-center py-4">
                                     <i class="fas fa-receipt fa-3x text-muted mb-3"></i>
                                     <h5 class="text-muted">No orders found</h5>
                                     <?php if ($search): ?>
@@ -228,6 +250,16 @@ if (isset($_GET['view']) && is_numeric($_GET['view'])) {
                                     </td>
                                     <td><?php echo formatDate($order['order_date']); ?></td>
                                     <td><?php echo sanitizeInput($order['cashier_name']); ?></td>
+                                    <td><?php echo formatCurrency($order['subtotal']); ?></td>
+                                    <td>
+                                        <?php if (isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
+                                            <span class="badge bg-warning text-dark">
+                                                -<?php echo formatCurrency($order['discount_amount']); ?>
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="text-muted">-</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <strong class="text-success"><?php echo formatCurrency($order['total_amount']); ?></strong>
                                     </td>
@@ -343,9 +375,6 @@ if (isset($_GET['view']) && is_numeric($_GET['view'])) {
     border-top-right-radius: .25rem;
     border-bottom-right-radius: .25rem;
 }
-
-/* Additional icon styles */
-.fa-eye::before { content: "👁️"; }
 </style>
 
 <?php require_once '../includes/footer.php'; ?>

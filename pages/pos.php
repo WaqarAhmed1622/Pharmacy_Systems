@@ -3,7 +3,7 @@
 ob_start();
 
 /**
- * Point of Sale (POS) Page with Live Product Search (AJAX)
+ * Point of Sale (POS) Page with Live Product Search (AJAX) and Discount
  */
 
 require_once '../includes/header.php';
@@ -96,9 +96,14 @@ if (isset($_POST['checkout'])) {
         foreach ($_SESSION['cart'] as $item) {
             $subtotal += $item['price'] * $item['quantity'];
         }
-        $taxRate = 0.10; 
-        $taxAmount = calculateTax($subtotal, $taxRate);
-        $total = $subtotal + $taxAmount;
+        
+        // Calculate discount
+        $discountAmount = calculateDiscount($subtotal);
+        $afterDiscount = $subtotal - $discountAmount;
+        
+        // Calculate tax on discounted amount
+        $taxAmount = calculateTax($afterDiscount);
+        $total = $afterDiscount + $taxAmount;
         
         $orderNumber = generateOrderNumber();
         $paymentMethod = sanitizeInput($_POST['payment_method']);
@@ -107,10 +112,10 @@ if (isset($_POST['checkout'])) {
         $conn->autocommit(false);
         
         try {
-            $orderQuery = "INSERT INTO orders (order_number, cashier_id, subtotal, tax_amount, total_amount, payment_method) 
-                          VALUES (?, ?, ?, ?, ?, ?)";
+            $orderQuery = "INSERT INTO orders (order_number, cashier_id, subtotal, discount_amount, tax_amount, total_amount, payment_method) 
+                          VALUES (?, ?, ?, ?, ?, ?, ?)";
             $stmt = $conn->prepare($orderQuery);
-            $stmt->bind_param('siddds', $orderNumber, $_SESSION['user_id'], $subtotal, $taxAmount, $total, $paymentMethod);
+            $stmt->bind_param('sidddds', $orderNumber, $_SESSION['user_id'], $subtotal, $discountAmount, $taxAmount, $total, $paymentMethod);
             $stmt->execute();
             $orderId = $conn->insert_id;
             
@@ -153,8 +158,13 @@ foreach ($_SESSION['cart'] as $item) {
     $subtotal += $item['price'] * $item['quantity'];
     $totalItems += $item['quantity'];
 }
-$taxAmount = calculateTax($subtotal);
-$total = $subtotal + $taxAmount;
+$discountAmount = calculateDiscount($subtotal);
+$afterDiscount = $subtotal - $discountAmount;
+$taxAmount = calculateTax($afterDiscount);
+$total = $afterDiscount + $taxAmount;
+
+$discountRate = getSetting('discount_rate', 0) * 100;
+$taxRate = getSetting('tax_rate', 0.10) * 100;
 ?>
 
 <div class="row">
@@ -169,12 +179,13 @@ $total = $subtotal + $taxAmount;
             <div class="card-body">
                <!-- Barcode Form -->
                 <form method="POST" class="mb-3" id="barcodeForm">
-    <div class="input-group">
-        <input type="text" name="barcode" class="form-control barcode-input" placeholder="Scan barcode or enter product name..." autocomplete="off" autofocus>
-        <input type="hidden" name="scan_barcode" value="1"> <!-- Add this line -->
-    </div>
-    <small class="text-muted">Scan barcode or type product name and press Enter</small>
-</form>
+                    <div class="input-group">
+                        <input type="text" name="barcode" class="form-control barcode-input" placeholder="Scan barcode or enter product name..." autocomplete="off" autofocus>
+                        <input type="hidden" name="scan_barcode" value="1">
+                    </div>
+                    <small class="text-muted">Scan barcode or type product name and press Enter</small>
+                </form>
+                
                 <!-- Live AJAX Search -->
                 <div class="mb-3">
                     <input type="text" id="liveSearch" class="form-control" placeholder="Search product by name or barcode...">
@@ -204,19 +215,31 @@ $total = $subtotal + $taxAmount;
                 <span class="badge bg-primary"><?php echo $totalItems; ?> items</span>
             </div>
             <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-4">
-                        <h6>Subtotal</h6>
+                <div class="row text-center mb-2">
+                    <div class="col-6">
+                        <h6 class="text-muted mb-1">Subtotal</h6>
                         <strong><?php echo formatCurrency($subtotal); ?></strong>
                     </div>
-                    <div class="col-4">
-                        <h6>Tax (10%)</h6>
+                    <div class="col-6">
+                        <h6 class="text-muted mb-1">Discount (<?php echo number_format($discountRate, 1); ?>%)</h6>
+                        <strong class="text-danger">-<?php echo formatCurrency($discountAmount); ?></strong>
+                    </div>
+                </div>
+                <hr>
+                <div class="row text-center mb-2">
+                    <div class="col-6">
+                        <h6 class="text-muted mb-1">After Discount</h6>
+                        <strong><?php echo formatCurrency($afterDiscount); ?></strong>
+                    </div>
+                    <div class="col-6">
+                        <h6 class="text-muted mb-1">Tax (<?php echo number_format($taxRate, 1); ?>%)</h6>
                         <strong><?php echo formatCurrency($taxAmount); ?></strong>
                     </div>
-                    <div class="col-4">
-                        <h6>Total</h6>
-                        <strong class="text-primary"><?php echo formatCurrency($total); ?></strong>
-                    </div>
+                </div>
+                <hr>
+                <div class="text-center">
+                    <h5 class="mb-1">Grand Total</h5>
+                    <h3 class="text-primary mb-0"><?php echo formatCurrency($total); ?></h3>
                 </div>
             </div>
         </div>
@@ -313,19 +336,24 @@ $total = $subtotal + $taxAmount;
                             </tbody>
                             <tfoot>
                                 <tr class="table-light">
-                                    <td colspan="4"><strong>Subtotal:</strong></td>
-                                    <td><strong><?php echo formatCurrency($subtotal); ?></strong></td>
-                                    <td></td>
+                                    <td colspan="6"><strong>Subtotal:</strong></td>
+                                    <td colspan="2"><strong><?php echo formatCurrency($subtotal); ?></strong></td>
+                                </tr>
+                                <tr class="table-warning">
+                                    <td colspan="6"><strong>Discount (<?php echo number_format($discountRate, 1); ?>%):</strong></td>
+                                    <td colspan="2"><strong class="text-danger">-<?php echo formatCurrency($discountAmount); ?></strong></td>
+                                </tr>
+                                <tr class="table-info">
+                                    <td colspan="6"><strong>After Discount:</strong></td>
+                                    <td colspan="2"><strong><?php echo formatCurrency($afterDiscount); ?></strong></td>
                                 </tr>
                                 <tr class="table-light">
-                                    <td colspan="4"><strong>Tax (10%):</strong></td>
-                                    <td><strong><?php echo formatCurrency($taxAmount); ?></strong></td>
-                                    <td></td>
+                                    <td colspan="6"><strong>Tax (<?php echo number_format($taxRate, 1); ?>%):</strong></td>
+                                    <td colspan="2"><strong><?php echo formatCurrency($taxAmount); ?></strong></td>
                                 </tr>
                                 <tr class="table-success">
-                                    <td colspan="4"><strong>Total:</strong></td>
-                                    <td><strong><?php echo formatCurrency($total); ?></strong></td>
-                                    <td></td>
+                                    <td colspan="6"><strong>Grand Total:</strong></td>
+                                    <td colspan="2"><strong class="text-success"><?php echo formatCurrency($total); ?></strong></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -352,10 +380,16 @@ $total = $subtotal + $taxAmount;
                                         </div>
                                         
                                         <div class="mb-3">
-                                            <div class="row text-center">
-                                                <div class="col-12">
-                                                    <h4 class="text-primary">Total: <?php echo formatCurrency($total); ?></h4>
-                                                </div>
+                                            <div class="alert alert-info mb-2">
+                                                <small>
+                                                    <strong>Breakdown:</strong><br>
+                                                    Subtotal: <?php echo formatCurrency($subtotal); ?><br>
+                                                    Discount: -<?php echo formatCurrency($discountAmount); ?><br>
+                                                    Tax: +<?php echo formatCurrency($taxAmount); ?>
+                                                </small>
+                                            </div>
+                                            <div class="text-center">
+                                                <h4 class="text-primary mb-0">Total: <?php echo formatCurrency($total); ?></h4>
                                             </div>
                                         </div>
                                         
@@ -381,7 +415,7 @@ $total = $subtotal + $taxAmount;
 let debounceTimer;
 
 document.getElementById('liveSearch').addEventListener('keyup', function() {
-    clearTimeout(debounceTimer); // Clear any previous timer
+    clearTimeout(debounceTimer);
     const query = this.value.trim();
 
     debounceTimer = setTimeout(function() {
@@ -398,10 +432,10 @@ document.getElementById('liveSearch').addEventListener('keyup', function() {
             }
         };
         xhr.send();
-    }, 300); // Wait 300ms after typing stops
+    }, 300);
 });
 
-// Auto-submit barcode form on Enter (for barcode scanners)
+// Auto-submit barcode form on Enter
 document.querySelector('.barcode-input').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
         e.preventDefault();
@@ -411,15 +445,15 @@ document.querySelector('.barcode-input').addEventListener('keydown', function(e)
     }
 });
 
-// Optionally, auto-submit if input length reaches typical barcode length (e.g., 8-13 digits)
+// Auto-submit if input length reaches typical barcode length
 document.querySelector('.barcode-input').addEventListener('input', function(e) {
     const val = this.value.trim();
-    if (/^\d{8,13}$/.test(val)) { // Typical barcode length
+    if (/^\d{8,13}$/.test(val)) {
         this.form.submit();
     }
 });
 
-// Auto-focus barcode input after form submissions
+// Auto-focus barcode input
 $(document).ready(function() {
     $('.barcode-input').focus();
     $('form').on('submit', function(e) {
@@ -433,13 +467,11 @@ $(document).ready(function() {
 
 // Keyboard shortcuts 
 $(document).on('keydown', function(e) {
-    // F1 - Focus barcode input
     if (e.which === 112) {
         e.preventDefault();
         $('.barcode-input').focus();
     }
     
-    // F2 - Clear cart
     if (e.which === 113 && <?php echo !empty($_SESSION['cart']) ? 'true' : 'false'; ?>) {
         e.preventDefault();
         if (confirm('Clear all items from cart?')) {
@@ -447,13 +479,11 @@ $(document).on('keydown', function(e) {
         }
     }
     
-    // F3 - Checkout
     if (e.which === 114 && <?php echo !empty($_SESSION['cart']) ? 'true' : 'false'; ?>) {
         e.preventDefault();
         $('button[name="checkout"]').click();
     }
 });
-
 </script>
 
 <?php 
