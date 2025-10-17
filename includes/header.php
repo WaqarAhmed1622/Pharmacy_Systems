@@ -192,10 +192,9 @@ checkSessionTimeout();
             <!-- Sidebar -->
             <div class="col-md-3 col-lg-2 sidebar">
                 <div class="text-center mb-4">
+                    <img src="../assets/logo.jpg" width="80" alt="Pharmacy Logo" class="mb-2 rounded-circle border border-white">
                     <h5 style="color: white;">Pharmacy System</h5>
                     <small class="text-muted">Welcome, <?php echo sanitizeInput($_SESSION['full_name']); ?></small>
-                    <img src="./assets/favicon.jpg" width="80" height="80" class="rounded-circle mt-2" alt="Pharmacy Logo">
-
                 </div>
                 
                 <nav class="nav flex-column">

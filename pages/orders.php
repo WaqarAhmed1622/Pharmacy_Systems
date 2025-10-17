@@ -5,6 +5,45 @@
  */
 
 require_once '../includes/header.php';
+// Handle order status update (add this after the search params section, before the queries)
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
+    $orderId = (int)$_POST['order_id'];
+    $newStatus = sanitizeInput($_POST['order_status']);
+    
+    // Get order details
+    $orderQuery = "SELECT * FROM orders WHERE id = ?";
+    $orderResult = executeQuery($orderQuery, 'i', [$orderId]);
+    $order = $orderResult[0];
+    
+    if ($newStatus == 'returned' && $order['status'] != 'returned') {
+        // Deduct the returned amount from the order
+        $refundAmount = $order['total_amount'];
+        
+        // Update order status and mark as returned
+        $updateQuery = "UPDATE orders SET status = ?, refund_amount = ? WHERE id = ?";
+        if (executeNonQuery($updateQuery, 'sdi', [$newStatus, $refundAmount, $orderId])) {
+            // Log the activity
+            logActivity('Order Returned', $_SESSION['user_id'], 
+                "Order ID: $orderId, Amount Refunded: " . formatCurrency($refundAmount));
+            
+            $success = "Order marked as returned. Refund amount: " . formatCurrency($refundAmount);
+        } else {
+            $error = "Failed to update order status.";
+        }
+    } else {
+        // Regular status update (completed, pending, cancelled)
+        $updateQuery = "UPDATE orders SET status = ? WHERE id = ?";
+        if (executeNonQuery($updateQuery, 'si', [$newStatus, $orderId])) {
+            logActivity('Order Status Updated', $_SESSION['user_id'], 
+                "Order ID: $orderId, New Status: $newStatus");
+            
+            $success = "Order status updated successfully.";
+        } else {
+            $error = "Failed to update order status.";
+        }
+    }
+}
 
 $search = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
@@ -65,29 +104,102 @@ $discountRate = getSetting('discount_rate', 0) * 100;
 $taxRate = getSetting('tax_rate', 0.10) * 100;
 ?>
 
+
 <?php if ($orderDetails): ?>
     <!-- Order Details View -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3><i class="fas fa-receipt"></i> Order Details - <?php echo $orderDetails['order_number']; ?></h3>
         <div>
-    <!-- View Details Button -->
-    <a href="?view=<?php echo $orderDetails['id']; ?>" class="btn btn-info me-2">
-        <i class="fas fa-eye"></i> View
-    </a>
+            <!-- Status Badge -->
+            <span class="badge bg-<?php 
+                echo $orderDetails['status'] == 'completed' ? 'success' : 
+                    ($orderDetails['status'] == 'pending' ? 'warning' : 
+                    ($orderDetails['status'] == 'returned' ? 'danger' : 'secondary'));
+            ?> me-2" style="font-size: 0.9rem; padding: 0.5rem 0.75rem;">
+                <?php echo ucfirst($orderDetails['status']); ?>
+            </span>
 
-    <!-- Print Receipt Button -->
-    <a href="receipt.php?order_id=<?php echo $orderDetails['id']; ?>" class="btn btn-primary me-2" target="_blank">
-        <i class="fas fa-print"></i> Print
-    </a>
+            <!-- Status Update Button - ADD THIS -->
+            <button type="button" class="btn btn-warning me-2" 
+                    data-bs-toggle="modal" 
+                    data-bs-target="#statusModal">
+                <i class="fas fa-sync"></i> Update Status
+            </button>
 
-    <!-- Back Button -->
-    <a href="orders.php" class="btn btn-secondary">
-        <i class="fas fa-arrow-left"></i> Back
-    </a>
-</div>
+            <!-- View Details Button -->
+            <a href="?view=<?php echo $orderDetails['id']; ?>" class="btn btn-info me-2">
+                <i class="fas fa-eye"></i> View
+            </a>
 
+            <!-- Print Receipt Button -->
+            <a href="receipt.php?order_id=<?php echo $orderDetails['id']; ?>" class="btn btn-primary me-2" target="_blank">
+                <i class="fas fa-print"></i> Print
+            </a>
+
+            <!-- Back Button -->
+            <a href="orders.php" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back
+            </a>
+        </div>
     </div>
-    
+
+    <!-- Status Update Modal - ADD THIS AFTER THE DIV ABOVE -->
+    <div class="modal fade" id="statusModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="POST">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Update Order Status</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="order_id" value="<?php echo $orderDetails['id']; ?>">
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Current Status</label>
+                            <div class="alert alert-info">
+                                <strong><?php echo ucfirst($orderDetails['status']); ?></strong>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">New Status *</label>
+                            <select name="order_status" class="form-select" required>
+                                <option value="">Select Status</option>
+                                <option value="pending">Pending</option>
+                                <option value="completed">Completed</option>
+                                <option value="returned">Returned</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                        </div>
+                        
+                        <div class="alert alert-warning" id="returnWarning" style="display: none;">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Return Warning:</strong> Marking this order as returned will refund 
+                            <strong><?php echo formatCurrency($orderDetails['total_amount']); ?></strong> 
+                            and this amount will be deducted from today's sales report.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" name="update_status" class="btn btn-primary">Update Status</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Show warning when return is selected
+    document.querySelector('[name="order_status"]').addEventListener('change', function() {
+        const returnWarning = document.getElementById('returnWarning');
+        if (this.value === 'returned') {
+            returnWarning.style.display = 'block';
+        } else {
+            returnWarning.style.display = 'none';
+        }
+    });
+    </script>   
     <div class="row">
         <div class="col-md-4">
             <div class="card">

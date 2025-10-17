@@ -18,23 +18,23 @@ function getSalesData($period, $start = null, $end = null) {
     
     switch ($period) {
         case 'today':
-            $whereClause = "WHERE DATE(order_date) = CURDATE()";
+            $whereClause = "WHERE DATE(order_date) = CURDATE() AND status != 'returned'";
             break;
         case 'yesterday':
-            $whereClause = "WHERE DATE(order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)";
+            $whereClause = "WHERE DATE(order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND status != 'returned'";
             break;
         case 'week':
-            $whereClause = "WHERE YEARWEEK(order_date) = YEARWEEK(CURDATE())";
+            $whereClause = "WHERE YEARWEEK(order_date) = YEARWEEK(CURDATE()) AND status != 'returned'";
             break;
         case 'month':
-            $whereClause = "WHERE MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE())";
+            $whereClause = "WHERE MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE()) AND status != 'returned'";
             break;
         case 'year':
-            $whereClause = "WHERE YEAR(order_date) = YEAR(CURDATE())";
+            $whereClause = "WHERE YEAR(order_date) = YEAR(CURDATE()) AND status != 'returned'";
             break;
         case 'custom':
             if ($start && $end) {
-                $whereClause = "WHERE DATE(order_date) BETWEEN ? AND ?";
+                $whereClause = "WHERE DATE(order_date) BETWEEN ? AND ? AND status != 'returned'";
                 $params = [$start, $end];
             }
             break;
@@ -59,23 +59,23 @@ function getTopProducts($period, $start = null, $end = null, $limit = 10) {
     
     switch ($period) {
         case 'today':
-            $whereClause = "WHERE DATE(o.order_date) = CURDATE()";
+            $whereClause = "WHERE DATE(o.order_date) = CURDATE() AND o.status != 'returned'";
             break;
         case 'yesterday':
-            $whereClause = "WHERE DATE(o.order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)";
+            $whereClause = "WHERE DATE(o.order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND o.status != 'returned'";
             break;
         case 'week':
-            $whereClause = "WHERE YEARWEEK(o.order_date) = YEARWEEK(CURDATE())";
+            $whereClause = "WHERE YEARWEEK(o.order_date) = YEARWEEK(CURDATE()) AND o.status != 'returned'";
             break;
         case 'month':
-            $whereClause = "WHERE MONTH(o.order_date) = MONTH(CURDATE()) AND YEAR(o.order_date) = YEAR(CURDATE())";
+            $whereClause = "WHERE MONTH(o.order_date) = MONTH(CURDATE()) AND YEAR(o.order_date) = YEAR(CURDATE()) AND o.status != 'returned'";
             break;
         case 'year':
-            $whereClause = "WHERE YEAR(o.order_date) = YEAR(CURDATE())";
+            $whereClause = "WHERE YEAR(o.order_date) = YEAR(CURDATE()) AND o.status != 'returned'";
             break;
         case 'custom':
             if ($start && $end) {
-                $whereClause = "WHERE DATE(o.order_date) BETWEEN ? AND ?";
+                $whereClause = "WHERE DATE(o.order_date) BETWEEN ? AND ? AND o.status != 'returned'";
                 $params = [$start, $end];
             }
             break;
