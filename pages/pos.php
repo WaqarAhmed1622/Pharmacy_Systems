@@ -3,7 +3,8 @@
 ob_start();
 
 /**
- * Point of Sale (POS) Page with Live Product Search (AJAX) and Discount
+ * Point of Sale (POS) Page with Live Product Search (AJAX), Discount
+ * and dynamic editable price per item in cart.
  */
 
 require_once '../includes/header.php';
@@ -16,6 +17,23 @@ if (!isset($_SESSION['cart'])) {
 
 $error = '';
 $success = '';
+
+// ----------------------
+// Handle price updates dynamically
+// ----------------------
+if (isset($_POST['update_price'])) {
+    $productId = (int)$_POST['product_id'];
+    $newPrice = (float)$_POST['price'];
+
+    if (isset($_SESSION['cart'][$productId])) {
+        if ($newPrice >= 0) {
+            $_SESSION['cart'][$productId]['price'] = $newPrice;
+            $success = 'Price updated successfully.';
+        } else {
+            $error = 'Invalid price entered.';
+        }
+    }
+}
 
 // Handle barcode scan/search
 if (isset($_POST['scan_barcode'])) {
@@ -115,22 +133,40 @@ if (isset($_POST['checkout'])) {
             $orderQuery = "INSERT INTO orders (order_number, cashier_id, subtotal, discount_amount, tax_amount, total_amount, payment_method) 
                           VALUES (?, ?, ?, ?, ?, ?, ?)";
             $stmt = $conn->prepare($orderQuery);
+            if ($stmt === false) {
+                throw new Exception('Prepare failed (orders): ' . $conn->error);
+            }
             $stmt->bind_param('sidddds', $orderNumber, $_SESSION['user_id'], $subtotal, $discountAmount, $taxAmount, $total, $paymentMethod);
-            $stmt->execute();
+            if (!$stmt->execute()) {
+                throw new Exception('Execute failed (orders): ' . $stmt->error);
+            }
             $orderId = $conn->insert_id;
+            $stmt->close();
             
             foreach ($_SESSION['cart'] as $item) {
                 $itemQuery = "INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price) 
                              VALUES (?, ?, ?, ?, ?)";
                 $stmt = $conn->prepare($itemQuery);
+                if ($stmt === false) {
+                    throw new Exception('Prepare failed (order_items): ' . $conn->error);
+                }
                 $itemTotal = $item['price'] * $item['quantity'];
                 $stmt->bind_param('iiidd', $orderId, $item['id'], $item['quantity'], $item['price'], $itemTotal);
-                $stmt->execute();
+                if (!$stmt->execute()) {
+                    throw new Exception('Execute failed (order_items): ' . $stmt->error);
+                }
+                $stmt->close();
                 
                 $updateStockQuery = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?";
                 $stmt = $conn->prepare($updateStockQuery);
+                if ($stmt === false) {
+                    throw new Exception('Prepare failed (update stock): ' . $conn->error);
+                }
                 $stmt->bind_param('ii', $item['quantity'], $item['id']);
-                $stmt->execute();
+                if (!$stmt->execute()) {
+                    throw new Exception('Execute failed (update stock): ' . $stmt->error);
+                }
+                $stmt->close();
             }
             
             $conn->commit();
@@ -144,7 +180,7 @@ if (isset($_POST['checkout'])) {
             
         } catch (Exception $e) {
             $conn->rollback();
-            $error = 'Failed to process order. Please try again.';
+            $error = 'Failed to process order. Please try again. (' . htmlspecialchars($e->getMessage()) . ')';
         }
         
         $conn->close();
@@ -218,28 +254,28 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                 <div class="row text-center mb-2">
                     <div class="col-6">
                         <h6 class="text-muted mb-1">Subtotal</h6>
-                        <strong><?php echo formatCurrency($subtotal); ?></strong>
+                        <strong id="display-subtotal"><?php echo formatCurrency($subtotal); ?></strong>
                     </div>
                     <div class="col-6">
                         <h6 class="text-muted mb-1">Discount (<?php echo number_format($discountRate, 1); ?>%)</h6>
-                        <strong class="text-danger">-<?php echo formatCurrency($discountAmount); ?></strong>
+                        <strong class="text-danger" id="display-discount">-<?php echo formatCurrency($discountAmount); ?></strong>
                     </div>
                 </div>
                 <hr>
                 <div class="row text-center mb-2">
                     <div class="col-6">
                         <h6 class="text-muted mb-1">After Discount</h6>
-                        <strong><?php echo formatCurrency($afterDiscount); ?></strong>
+                        <strong id="display-after-discount"><?php echo formatCurrency($afterDiscount); ?></strong>
                     </div>
                     <div class="col-6">
                         <h6 class="text-muted mb-1">Tax (<?php echo number_format($taxRate, 1); ?>%)</h6>
-                        <strong><?php echo formatCurrency($taxAmount); ?></strong>
+                        <strong id="display-tax"><?php echo formatCurrency($taxAmount); ?></strong>
                     </div>
                 </div>
                 <hr>
                 <div class="text-center">
                     <h5 class="mb-1">Grand Total</h5>
-                    <h3 class="text-primary mb-0"><?php echo formatCurrency($total); ?></h3>
+                    <h3 class="text-primary mb-0" id="display-total"><?php echo formatCurrency($total); ?></h3>
                 </div>
             </div>
         </div>
@@ -272,7 +308,7 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                     </div>
                 <?php else: ?>
                     <div class="table-responsive">
-                        <table class="table">
+                        <table class="table" id="cart-table">
                             <thead>
                                 <tr>
                                     <th>Product</th>
@@ -287,7 +323,7 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                             </thead>
                             <tbody>
                                 <?php foreach ($_SESSION['cart'] as $item): ?>
-                                    <tr>
+                                    <tr data-product-id="<?php echo $item['id']; ?>">
                                         <td>
                                             <strong><?php echo sanitizeInput($item['name']); ?></strong>
                                             <br>
@@ -302,9 +338,25 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                         <td>
                                             <?php echo !empty($item['manufacturer']) ? sanitizeInput($item['manufacturer']) : '<span class="text-muted">N/A</span>'; ?>
                                         </td>
-                                        <td><?php echo formatCurrency($item['price']); ?></td>
+                                        <!-- Editable Price -->
                                         <td>
-                                            <form method="POST" class="d-inline">
+                                            <form method="POST" class="d-inline price-form">
+                                                <input type="hidden" name="product_id" value="<?php echo $item['id']; ?>">
+                                                <input 
+                                                    type="number" 
+                                                    name="price" 
+                                                    value="<?php echo $item['price']; ?>" 
+                                                    min="0" 
+                                                    step="0.01" 
+                                                    class="form-control form-control-sm price-input"
+                                                    style="width: 110px;"
+                                                    onchange="this.form.submit()"
+                                                >
+                                                <input type="hidden" name="update_price" value="1">
+                                            </form>
+                                        </td>
+                                        <td>
+                                            <form method="POST" class="d-inline qty-form">
                                                 <input type="hidden" name="product_id" value="<?php echo $item['id']; ?>">
                                                 <input 
                                                     type="number" 
@@ -312,7 +364,7 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                                     value="<?php echo $item['quantity']; ?>"
                                                     min="0" 
                                                     max="<?php echo $item['stock_available']; ?>"
-                                                    class="form-control form-control-sm d-inline-block"
+                                                    class="form-control form-control-sm quantity-input"
                                                     style="width: 80px;"
                                                     onchange="this.form.submit()"
                                                 >
@@ -320,7 +372,7 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                             </form>
                                         </td>
                                         <td>
-                                            <strong><?php echo formatCurrency($item['price'] * $item['quantity']); ?></strong>
+                                            <strong class="line-total"><?php echo number_format($item['price'] * $item['quantity'], 2); ?></strong>
                                         </td>
                                         <td>
                                             <form method="POST" class="d-inline">
@@ -337,23 +389,23 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                             <tfoot>
                                 <tr class="table-light">
                                     <td colspan="6"><strong>Subtotal:</strong></td>
-                                    <td colspan="2"><strong><?php echo formatCurrency($subtotal); ?></strong></td>
+                                    <td colspan="2"><strong id="tfoot-subtotal"><?php echo formatCurrency($subtotal); ?></strong></td>
                                 </tr>
                                 <tr class="table-warning">
                                     <td colspan="6"><strong>Discount (<?php echo number_format($discountRate, 1); ?>%):</strong></td>
-                                    <td colspan="2"><strong class="text-danger">-<?php echo formatCurrency($discountAmount); ?></strong></td>
+                                    <td colspan="2"><strong class="text-danger" id="tfoot-discount">-<?php echo formatCurrency($discountAmount); ?></strong></td>
                                 </tr>
                                 <tr class="table-info">
                                     <td colspan="6"><strong>After Discount:</strong></td>
-                                    <td colspan="2"><strong><?php echo formatCurrency($afterDiscount); ?></strong></td>
+                                    <td colspan="2"><strong id="tfoot-after-discount"><?php echo formatCurrency($afterDiscount); ?></strong></td>
                                 </tr>
                                 <tr class="table-light">
                                     <td colspan="6"><strong>Tax (<?php echo number_format($taxRate, 1); ?>%):</strong></td>
-                                    <td colspan="2"><strong><?php echo formatCurrency($taxAmount); ?></strong></td>
+                                    <td colspan="2"><strong id="tfoot-tax"><?php echo formatCurrency($taxAmount); ?></strong></td>
                                 </tr>
                                 <tr class="table-success">
                                     <td colspan="6"><strong>Grand Total:</strong></td>
-                                    <td colspan="2"><strong class="text-success"><?php echo formatCurrency($total); ?></strong></td>
+                                    <td colspan="2"><strong class="text-success" id="tfoot-total"><?php echo formatCurrency($total); ?></strong></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -369,7 +421,7 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                     </h6>
                                 </div>
                                 <div class="card-body">
-                                    <form method="POST">
+                                    <form method="POST" id="checkout-form">
                                         <div class="mb-3">
                                             <label class="form-label">Payment Method</label>
                                             <select name="payment_method" class="form-select" required>
@@ -383,13 +435,13 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                             <div class="alert alert-info mb-2">
                                                 <small>
                                                     <strong>Breakdown:</strong><br>
-                                                    Subtotal: <?php echo formatCurrency($subtotal); ?><br>
-                                                    Discount: -<?php echo formatCurrency($discountAmount); ?><br>
-                                                    Tax: +<?php echo formatCurrency($taxAmount); ?>
+                                                    Subtotal: <span id="break-subtotal"><?php echo formatCurrency($subtotal); ?></span><br>
+                                                    Discount: -<span id="break-discount"><?php echo formatCurrency($discountAmount); ?></span><br>
+                                                    Tax: +<span id="break-tax"><?php echo formatCurrency($taxAmount); ?></span>
                                                 </small>
                                             </div>
                                             <div class="text-center">
-                                                <h4 class="text-primary mb-0">Total: <?php echo formatCurrency($total); ?></h4>
+                                                <h4 class="text-primary mb-0">Total: <span id="break-total"><?php echo formatCurrency($total); ?></span></h4>
                                             </div>
                                         </div>
                                         
@@ -482,6 +534,73 @@ $(document).on('keydown', function(e) {
     if (e.which === 114 && <?php echo !empty($_SESSION['cart']) ? 'true' : 'false'; ?>) {
         e.preventDefault();
         $('button[name="checkout"]').click();
+    }
+});
+
+// ----------------------------
+// Live totals recalculation (client-side)
+// ----------------------------
+function recalcTotalsClientSide() {
+    // Sum line totals
+    let subtotal = 0;
+    document.querySelectorAll('#cart-table tbody tr').forEach(row => {
+        const priceEl = row.querySelector('.price-input');
+        const qtyEl = row.querySelector('.quantity-input');
+        const price = priceEl ? parseFloat(priceEl.value) : 0;
+        const qty = qtyEl ? parseFloat(qtyEl.value) : 0;
+        const line = price * qty;
+        const lineTotalEl = row.querySelector('.line-total');
+        if (lineTotalEl) lineTotalEl.textContent = line.toFixed(2);
+        subtotal += line;
+    });
+
+    // Calculate discount and tax using server-side rates exposed in JS via data attributes or embedded values
+    // We'll use the same calculation functions logic as PHP: discountRate and taxRate values are embedded
+    const discountRate = <?php echo json_encode(getSetting('discount_rate', 0)); ?>; // decimal like 0.05
+    const taxRate = <?php echo json_encode(getSetting('tax_rate', 0.10)); ?>; // decimal like 0.10
+
+    const discountAmount = subtotal * discountRate;
+    const afterDiscount = subtotal - discountAmount;
+    const taxAmount = afterDiscount * taxRate;
+    const total = afterDiscount + taxAmount;
+
+    // Update DOM (use formatCurrency via simple JS formatting — server handles symbol; we'll mimic numeric format)
+    // If you prefer symbol, formatCurrency server-side prints symbol; here we will show numeric with two decimals
+    function formatMoney(n) {
+        return Number(n).toFixed(2);
+    }
+
+    document.getElementById('display-subtotal').textContent = formatMoney(subtotal);
+    document.getElementById('tfoot-subtotal').textContent = formatMoney(subtotal);
+    document.getElementById('display-discount').textContent = '-' + formatMoney(discountAmount);
+    document.getElementById('tfoot-discount').textContent = '-' + formatMoney(discountAmount);
+    document.getElementById('display-after-discount').textContent = formatMoney(afterDiscount);
+    document.getElementById('tfoot-after-discount').textContent = formatMoney(afterDiscount);
+    document.getElementById('display-tax').textContent = formatMoney(taxAmount);
+    document.getElementById('tfoot-tax').textContent = formatMoney(taxAmount);
+    document.getElementById('display-total').textContent = formatMoney(total);
+    document.getElementById('tfoot-total').textContent = formatMoney(total);
+
+    // Update small breakdown
+    const breakSub = document.getElementById('break-subtotal');
+    const breakDisc = document.getElementById('break-discount');
+    const breakTax = document.getElementById('break-tax');
+    const breakTotal = document.getElementById('break-total');
+    if (breakSub) breakSub.textContent = formatMoney(subtotal);
+    if (breakDisc) breakDisc.textContent = formatMoney(discountAmount);
+    if (breakTax) breakTax.textContent = formatMoney(taxAmount);
+    if (breakTotal) breakTotal.textContent = formatMoney(total);
+}
+
+// Recalculate on page load
+document.addEventListener('DOMContentLoaded', function() {
+    recalcTotalsClientSide();
+});
+
+// Recalculate while typing (live update)
+document.addEventListener('input', function(e) {
+    if (e.target.classList.contains('price-input') || e.target.classList.contains('quantity-input')) {
+        recalcTotalsClientSide();
     }
 });
 </script>
