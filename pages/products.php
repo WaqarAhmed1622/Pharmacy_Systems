@@ -170,11 +170,11 @@ $manufacturer = isset($_POST['manufacturer']) ? sanitizeInput($_POST['manufactur
 $expiryDate = isset($_POST['expiry_date']) && !empty($_POST['expiry_date']) ? sanitizeInput($_POST['expiry_date']) : null;
 
         // Validation
-        if (empty($name) || empty($barcode) || $price <= 0 || $cost <= 0) {
-            $error = 'Please fill all required fields with valid values.';
-        } elseif (!isBarcodeUnique($barcode, isset($_POST['edit_product']) ? $productId : null)) {
-            $error = 'Barcode already exists. Please use a unique barcode.';
-        } else {
+        if (empty($name) || $price <= 0 || $cost <= 0) {
+    $error = 'Please fill all required fields with valid values.';
+} elseif (!empty($barcode) && !isBarcodeUnique($barcode, isset($_POST['edit_product']) ? $productId : null)) {
+    $error = 'Barcode already exists. Please use a unique barcode.';
+} else {
             if (isset($_POST['add_product'])) {
                 // Insert (is_active defaults to 1)
                 $query = "INSERT INTO products (name, barcode, category_id, price, cost, stock_quantity, min_stock_level, description, manufacturer, expiry_date) 
@@ -601,14 +601,13 @@ if ($action == 'list') {
                                 >
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label for="barcode" class="form-label">Barcode *</label>
+                                <label for="barcode" class="form-label">Barcode</label>
                                 <input 
                                     type="text" 
                                     class="form-control barcode-input" 
                                     id="barcode" 
                                     name="barcode" 
                                     value="<?php echo isset($product) ? sanitizeInput($product['barcode']) : ''; ?>" 
-                                    required
                                 >
                                 <small class="text-muted">Must be unique</small>
                             </div>
@@ -792,15 +791,31 @@ if ($action == 'list') {
             document.getElementById('barcode').value = barcode;
         }
         // Fill sample data for testing
-        function fillSampleData() {
-            document.getElementById('name').value = 'Sample Product';
-            document.getElementById('barcode').value = Math.random().toString().substring(2, 15);
-            document.getElementById('price').value = '99.99';
-            document.getElementById('cost').value = '59.99';
-            document.getElementById('stock_quantity').value = '50';
-            document.getElementById('min_stock_level').value = '10';
-            document.getElementById('description').value = 'Sample product description for testing.';
-        }
+        // Fill sample data for testing
+function fillSampleData() {
+    document.getElementById('name').value = 'Sample Product';
+    document.getElementById('barcode').value = Math.random().toString().substring(2, 15);
+    
+    // Select first category if available
+    const categorySelect = document.getElementById('category_id');
+    if (categorySelect.options.length > 1) {
+        categorySelect.selectedIndex = 1; // Select first category (skip "Select Category")
+    }
+    
+    document.getElementById('price').value = '99.99';
+    document.getElementById('cost').value = '59.99';
+    document.getElementById('stock_quantity').value = '50';
+    document.getElementById('min_stock_level').value = '10';
+    
+    // Set expiry date to 1 year from now
+    const expiryDate = new Date();
+    expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+    const formattedDate = expiryDate.toISOString().split('T')[0];
+    document.getElementById('expiry_date').value = formattedDate;
+    
+    document.getElementById('manufacturer').value = 'Sample Manufacturer';
+    document.getElementById('description').value = 'Sample product description for testing.';
+}
     </script>
 <?php endif; ?>
 
