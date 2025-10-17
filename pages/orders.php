@@ -70,13 +70,22 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3><i class="fas fa-receipt"></i> Order Details - <?php echo $orderDetails['order_number']; ?></h3>
         <div>
-            <a href="receipt.php?order_id=<?php echo $orderDetails['id']; ?>" class="btn btn-primary me-2" target="_blank">
-                <i class="fas fa-print"></i> Print Receipt
-            </a>
-            <a href="orders.php" class="btn btn-secondary">
-                <i class="fas fa-arrow-left"></i> Back to Orders
-            </a>
-        </div>
+    <!-- View Details Button -->
+    <a href="?view=<?php echo $orderDetails['id']; ?>" class="btn btn-info me-2">
+        <i class="fas fa-eye"></i> View
+    </a>
+
+    <!-- Print Receipt Button -->
+    <a href="receipt.php?order_id=<?php echo $orderDetails['id']; ?>" class="btn btn-primary me-2" target="_blank">
+        <i class="fas fa-print"></i> Print
+    </a>
+
+    <!-- Back Button -->
+    <a href="orders.php" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Back
+    </a>
+</div>
+
     </div>
     
     <div class="row">
