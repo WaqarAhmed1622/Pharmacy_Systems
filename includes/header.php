@@ -8,6 +8,8 @@
 $auth_path = '';
 $functions_path = '';
 
+date_default_timezone_set('Asia/Karachi');
+
 if (strpos($_SERVER['PHP_SELF'], '/pages/') !== false) {
     // Called from pages directory
     $auth_path = '../includes/auth.php';
@@ -262,7 +264,7 @@ checkSessionTimeout();
                             <small class="text-muted">(<?php echo ucfirst($_SESSION['role']); ?>)</small>
                         </span>
                         <span class="text-muted">
-                            <i class="fas fa-clock"></i> <?php echo date('M d, Y H:i'); ?>
+                            <i class="fas fa-clock"></i> <?php echo date('M d, Y h:i A'); ?>
                         </span>
                     </div>
                 </div>
