@@ -65,7 +65,7 @@ if (isset($_POST['ajax_search'])) {
     // Return only the table body HTML
     if (empty($searchResults)) {
         echo '<tr>
-                <td colspan="10" class="text-center py-4">
+                <td colspan="11" class="text-center py-4">
                     <i class="fas fa-search fa-3x text-muted mb-3"></i>
                     <h5 class="text-muted">No products found</h5>
                     <p class="text-muted">Try adjusting your search terms</p>
@@ -91,6 +91,7 @@ if (isset($_POST['ajax_search'])) {
             echo '<td>' . formatCurrency($prod['price']) . '</td>';
             echo '<td>' . formatCurrency($prod['cost']) . '</td>';
             echo '<td>' . sanitizeInput($prod['manufacturer']) . '</td>';
+            echo '<td>' . (!empty($prod['manufacturing_date']) ? date('Y-m-d', strtotime($prod['manufacturing_date'])) : '<span class="text-muted">N/A</span>') . '</td>';
             echo '<td>' . (!empty($prod['expiry_date']) ? date('Y-m-d', strtotime($prod['expiry_date'])) : '<span class="text-muted">N/A</span>') . '</td>';
             echo '<td>';
             echo '<span class="stock-quantity" data-min-stock="' . $prod['min_stock_level'] . '">' . $prod['stock_quantity'] . '</span>';
@@ -168,6 +169,7 @@ $minStockLevel = isset($_POST['min_stock_level']) && is_numeric($_POST['min_stoc
 $description = sanitizeInput($_POST['description']);
 $manufacturer = isset($_POST['manufacturer']) ? sanitizeInput($_POST['manufacturer']) : '';
 $expiryDate = isset($_POST['expiry_date']) && !empty($_POST['expiry_date']) ? sanitizeInput($_POST['expiry_date']) : null;
+$manufacturingDate = isset($_POST['manufacturing_date']) && !empty($_POST['manufacturing_date']) ? sanitizeInput($_POST['manufacturing_date']) : null;
 
         // Validation
         if (empty($name) || $price <= 0 || $cost <= 0) {
@@ -177,10 +179,10 @@ $expiryDate = isset($_POST['expiry_date']) && !empty($_POST['expiry_date']) ? sa
 } else {
             if (isset($_POST['add_product'])) {
                 // Insert (is_active defaults to 1)
-                $query = "INSERT INTO products (name, barcode, category_id, price, cost, stock_quantity, min_stock_level, description, manufacturer, expiry_date) 
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-$params = [$name, $barcode, $categoryId, $price, $cost, $stockQuantity, $minStockLevel, $description, $manufacturer, $expiryDate];
-$types = 'ssiddiisss';
+                $query = "INSERT INTO products (name, barcode, category_id, price, cost, stock_quantity, min_stock_level, description, manufacturer, expiry_date, manufacturing_date) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $params = [$name, $barcode, $categoryId, $price, $cost, $stockQuantity, $minStockLevel, $description, $manufacturer, $expiryDate, $manufacturingDate];
+                $types = 'ssiddiissss';
 
 
                 if (executeNonQuery($query, $types, $params)) {
@@ -192,9 +194,9 @@ $types = 'ssiddiisss';
             } else {
                 // Update
                 $query = "UPDATE products SET name = ?, barcode = ?, category_id = ?, price = ?, cost = ?, 
-stock_quantity = ?, min_stock_level = ?, description = ?, manufacturer = ?, expiry_date = ? WHERE id = ?";
-$params = [$name, $barcode, $categoryId, $price, $cost, $stockQuantity, $minStockLevel, $description, $manufacturer, $expiryDate, $productId];
-$types = 'ssiddiisssi';
+stock_quantity = ?, min_stock_level = ?, description = ?, manufacturer = ?, expiry_date = ?, manufacturing_date = ? WHERE id = ?";
+$params = [$name, $barcode, $categoryId, $price, $cost, $stockQuantity, $minStockLevel, $description, $manufacturer, $expiryDate, $manufacturingDate, $productId];
+$types = 'ssiddiissssi';
 
                 if (executeNonQuery($query, $types, $params)) {
                     $success = 'Product updated successfully.';
@@ -423,6 +425,7 @@ if ($action == 'list') {
                             <th>Price (Rs)</th>
                             <th>Cost (Rs)</th>
                             <th>Manufacturer</th>
+                            <th>Mfg. Date</th>
                             <th>Expiry Date</th>
                             <th>Stock</th>
                             <th>Status</th>
@@ -432,7 +435,7 @@ if ($action == 'list') {
                     <tbody id="productsTableBody">
                         <?php if (empty($products)): ?>
                             <tr>
-                                <td colspan="10" class="text-center py-4">
+                                <td colspan="11" class="text-center py-4">
                                     <i class="fas fa-box fa-3x text-muted mb-3"></i>
                                     <h5 class="text-muted">
                                         <?php echo (isset($_GET['search']) || isset($_GET['category']) || isset($_GET['show_disabled'])) ? 'No products found' : 'No products added yet'; ?>
@@ -458,6 +461,7 @@ if ($action == 'list') {
                                     <td><?php echo formatCurrency($prod['price']); ?></td>
                                     <td><?php echo formatCurrency($prod['cost']); ?></td>
                                     <td><?php echo sanitizeInput($prod['manufacturer']); ?></td>
+                                    <td><?php echo !empty($prod['manufacturing_date']) ? date('Y-m-d', strtotime($prod['manufacturing_date'])) : '<span class="text-muted">N/A</span>'; ?></td>
                                     <td><?php echo !empty($prod['expiry_date']) ? date('Y-m-d', strtotime($prod['expiry_date'])) : '<span class="text-muted">N/A</span>'; ?></td>
                                     <td>
                                         <span class="stock-quantity" data-min-stock="<?php echo $prod['min_stock_level']; ?>">
@@ -526,7 +530,7 @@ if ($action == 'list') {
             if (searchTerm.length >= 2 || categoryId || searchTerm.length === 0 || showDisabled === '1') {
                 // Show loading
                 document.getElementById('productsTableBody').innerHTML = 
-                    '<tr><td colspan="10" class="text-center py-4">Searching...</td></tr>';
+                    '<tr><td colspan="11" class="text-center py-4">Searching...</td></tr>';
 
                 // Create form data
                 const formData = new FormData();
@@ -552,7 +556,7 @@ if ($action == 'list') {
                 })
                 .catch(error => {
                     document.getElementById('productsTableBody').innerHTML = 
-                        '<tr><td colspan="10" class="text-center py-4 text-danger">Search error. Please try again.</td></tr>';
+                        '<tr><td colspan="11" class="text-center py-4 text-danger">Search error. Please try again.</td></tr>';
                 });
             }
         }, 300);
@@ -694,6 +698,18 @@ if ($action == 'list') {
         >
     </div>
 
+    <!-- Manufacturing Date -->
+    <div class="col-md-4 mb-3">
+        <label for="manufacturing_date" class="form-label">Manufacturing Date</label>
+        <input 
+            type="date" 
+            class="form-control" 
+            id="manufacturing_date" 
+            name="manufacturing_date" 
+            value="<?php echo isset($product) && !empty($product['manufacturing_date']) ? date('Y-m-d', strtotime($product['manufacturing_date'])) : ''; ?>"
+        >
+    </div>
+
     <!-- Expiry Date -->
     <div class="col-md-6 mb-3">
         <label for="expiry_date" class="form-label">Expiry Date</label>
@@ -796,10 +812,9 @@ function fillSampleData() {
     document.getElementById('name').value = 'Sample Product';
     document.getElementById('barcode').value = Math.random().toString().substring(2, 15);
     
-    // Select first category if available
     const categorySelect = document.getElementById('category_id');
     if (categorySelect.options.length > 1) {
-        categorySelect.selectedIndex = 1; // Select first category (skip "Select Category")
+        categorySelect.selectedIndex = 1;
     }
     
     document.getElementById('price').value = '99.99';
@@ -807,11 +822,17 @@ function fillSampleData() {
     document.getElementById('stock_quantity').value = '50';
     document.getElementById('min_stock_level').value = '10';
     
+    // Set manufacturing date to 6 months ago
+    const mfgDate = new Date();
+    mfgDate.setMonth(mfgDate.getMonth() - 6);
+    const formattedMfgDate = mfgDate.toISOString().split('T')[0];
+    document.getElementById('manufacturing_date').value = formattedMfgDate;
+    
     // Set expiry date to 1 year from now
     const expiryDate = new Date();
     expiryDate.setFullYear(expiryDate.getFullYear() + 1);
-    const formattedDate = expiryDate.toISOString().split('T')[0];
-    document.getElementById('expiry_date').value = formattedDate;
+    const formattedExpDate = expiryDate.toISOString().split('T')[0];
+    document.getElementById('expiry_date').value = formattedExpDate;
     
     document.getElementById('manufacturer').value = 'Sample Manufacturer';
     document.getElementById('description').value = 'Sample product description for testing.';

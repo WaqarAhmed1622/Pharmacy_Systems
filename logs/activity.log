@@ -90,3 +90,9 @@
 2025-10-17 17:35:18 - User 1: Order Status Updated - Order ID: 15, New Status: pending
 2025-10-17 17:36:02 - User 1: Order Status Updated - Order ID: 15, New Status: completed
 2025-10-17 17:39:40 - User 1: User logged out - 
+2025-10-17 20:53:16 - User 1: Added product - Product: Sample Product
+2025-10-17 20:53:22 - User 1: Soft-deleted (disabled) product - Product ID: 16
+2025-10-17 20:53:25 - User 1: Soft-deleted (disabled) product - Product ID: 15
+2025-10-17 20:53:30 - User 1: Soft-deleted (disabled) product - Product ID: 14
+2025-10-17 20:53:40 - User 1: Added product - Product: Sample Product
+2025-10-17 17:55:33 - User 1: User logged out - 
