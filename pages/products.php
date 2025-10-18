@@ -110,34 +110,37 @@ if (isset($_POST['ajax_search'])) {
             } else {
                 echo '<span class="badge bg-secondary">Disabled</span>';
             }
-            echo '</td>';
             echo '<td>';
             echo '<div class="btn-group btn-group-sm">';
             echo '<a href="?action=edit&id=' . $prod['id'] . '" class="btn btn-outline-primary">';
             echo '<i class="fas fa-edit"></i>';
             echo '</a>';
 
-            // // Toggle enable/disable form
-            echo '<form method="POST" class="d-inline">';
-            echo '<input type="hidden" name="product_id" value="' . $prod['id'] . '">';
             if ($prod['is_active']) {
-                echo '<button type="submit" name="toggle_product" value="disable" class="btn btn-outline-warning" onclick="return confirm(\'Disable this product? It will be hidden from active lists but history remains.\')">';
-                echo '<i class="fas fa-eye-slash"></i></i>';
+                // Disable button for active products
+                echo '<form method="POST" class="d-inline">';
+                echo '<input type="hidden" name="product_id" value="' . $prod['id'] . '">';
+                echo '<button type="submit" name="toggle_product" value="disable" class="btn btn-outline-warning" onclick="return confirm(\'Disable this product? It will be hidden from active lists but history remains.\')" title="Disable Product">';
+                echo '<i class="fas fa-ban"></i>';
                 echo '</button>';
+                echo '</form>';
             } else {
-                echo '<button type="submit" name="toggle_product" value="enable" class="btn btn-outline-success" onclick="return confirm(\'Enable this product?\')">';
+                // Enable button for disabled products
+                echo '<form method="POST" class="d-inline">';
+                echo '<input type="hidden" name="product_id" value="' . $prod['id'] . '">';
+                echo '<button type="submit" name="toggle_product" value="enable" class="btn btn-outline-success" onclick="return confirm(\'Enable this product?\')" title="Enable Product">';
                 echo '<i class="fas fa-check"></i>';
                 echo '</button>';
+                echo '</form>';
+                
+                // Delete button (hard delete) - only for disabled products
+                echo '<form method="POST" class="d-inline" onsubmit="return confirm(\'Are you sure you want to permanently delete this product? This cannot be undone!\')">';
+                echo '<input type="hidden" name="product_id" value="' . $prod['id'] . '">';
+                echo '<button type="submit" name="hard_delete_product" class="btn btn-outline-danger" title="Permanently Delete">';
+                echo '<i class="fas fa-trash"></i>';
+                echo '</button>';
+                echo '</form>';
             }
-            echo '</form>';
-
-            // Soft-delete (disable) - kept for UI backward-compat
-            echo '<form method="POST" class="d-inline" onsubmit="return confirm(\'Are you sure you want to disable this product?\')">';
-            echo '<input type="hidden" name="product_id" value="' . $prod['id'] . '">';
-            echo '<button type="submit" name="delete_product" class="btn btn-outline-danger">';
-            echo '<i class="fas fa-trash"></i>';
-            echo '</button>';
-            echo '</form>';
 
             echo '</div>';
             echo '</td>';
@@ -160,16 +163,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['ajax_search'])) {
     // Add or Edit
     if (isset($_POST['add_product']) || isset($_POST['edit_product'])) {
         $name = sanitizeInput($_POST['name']);
-$barcode = sanitizeInput($_POST['barcode']);
-$categoryId = isset($_POST['category_id']) ? (int)$_POST['category_id'] : 0;
-$price = isset($_POST['price']) && is_numeric($_POST['price']) ? (float)$_POST['price'] : 0.0;
-$cost = isset($_POST['cost']) && is_numeric($_POST['cost']) ? (float)$_POST['cost'] : 0.0;
-$stockQuantity = isset($_POST['stock_quantity']) && is_numeric($_POST['stock_quantity']) ? (int)$_POST['stock_quantity'] : 0;
-$minStockLevel = isset($_POST['min_stock_level']) && is_numeric($_POST['min_stock_level']) ? (int)$_POST['min_stock_level'] : 0;
-$description = sanitizeInput($_POST['description']);
-$manufacturer = isset($_POST['manufacturer']) ? sanitizeInput($_POST['manufacturer']) : '';
-$expiryDate = isset($_POST['expiry_date']) && !empty($_POST['expiry_date']) ? sanitizeInput($_POST['expiry_date']) : null;
-$manufacturingDate = isset($_POST['manufacturing_date']) && !empty($_POST['manufacturing_date']) ? sanitizeInput($_POST['manufacturing_date']) : null;
+        $barcode = sanitizeInput($_POST['barcode']);
+        $categoryId = isset($_POST['category_id']) ? (int)$_POST['category_id'] : 0;
+        $price = isset($_POST['price']) && is_numeric($_POST['price']) ? (float)$_POST['price'] : 0.0;
+        $cost = isset($_POST['cost']) && is_numeric($_POST['cost']) ? (float)$_POST['cost'] : 0.0;
+        $stockQuantity = isset($_POST['stock_quantity']) && is_numeric($_POST['stock_quantity']) ? (int)$_POST['stock_quantity'] : 0;
+        $minStockLevel = isset($_POST['min_stock_level']) && is_numeric($_POST['min_stock_level']) ? (int)$_POST['min_stock_level'] : 0;
+        $description = sanitizeInput($_POST['description']);
+        $manufacturer = isset($_POST['manufacturer']) ? sanitizeInput($_POST['manufacturer']) : '';
+        $expiryDate = isset($_POST['expiry_date']) && !empty($_POST['expiry_date']) ? sanitizeInput($_POST['expiry_date']) : null;
+        $manufacturingDate = isset($_POST['manufacturing_date']) && !empty($_POST['manufacturing_date']) ? sanitizeInput($_POST['manufacturing_date']) : null;
 
         // Validation
         if (empty($name) || $price <= 0 || $cost <= 0) {
@@ -234,19 +237,28 @@ $types = 'ssiddiissssi';
         }
     }
 
-    // Soft-delete -> disable (keeps history)
-    if (isset($_POST['delete_product']) && isset($_POST['product_id'])) {
-        $pid = (int)$_POST['product_id'];
+    // Hard delete (permanent delete) - only for disabled products
+if (isset($_POST['hard_delete_product']) && isset($_POST['product_id'])) {
+    $pid = (int)$_POST['product_id'];
 
-        // Always disable to preserve history
-        $q = "UPDATE products SET is_active = 0 WHERE id = ?";
+    // Check if product is disabled first
+    $checkQuery = "SELECT is_active, name FROM products WHERE id = ?";
+    $checkResult = executeQuery($checkQuery, 'i', [$pid]);
+    
+    if (!empty($checkResult) && $checkResult[0]['is_active'] == 0) {
+        // Product is disabled, proceed with hard delete
+        $productName = $checkResult[0]['name'];
+        $q = "DELETE FROM products WHERE id = ?";
         if (executeNonQuery($q, 'i', [$pid])) {
-            $success = 'Product disabled (soft-deleted) successfully.';
-            logActivity('Soft-deleted (disabled) product', $_SESSION['user_id'], "Product ID: $pid");
+            $success = 'Product permanently deleted successfully.';
+            logActivity('Hard deleted product', $_SESSION['user_id'], "Product: $productName (ID: $pid)");
         } else {
-            $error = 'Failed to disable product.';
+            $error = 'Failed to delete product.';
         }
+    } else {
+        $error = 'Cannot delete active products. Please disable first.';
     }
+}
 }
 
 // Get categories for dropdown
@@ -483,19 +495,39 @@ if ($action == 'list') {
                                             <span class="badge bg-secondary">Disabled</span>
                                         <?php endif; ?>
                                     </td>
-                                       <td>
+                                    <td>
                                         <div class="btn-group btn-group-sm">
                                             <a href="?action=edit&id=<?php echo $prod['id']; ?>" class="btn btn-outline-primary">
                                                 <i class="fas fa-edit"></i>
                                             </a>
 
-                                            <!-- Removed toggle enable/disable icon; keep only soft-delete (trash) -->
-                                            <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to disable this product?')">
-                                                <input type="hidden" name="product_id" value="<?php echo $prod['id']; ?>">
-                                                <button type="submit" name="delete_product" class="btn btn-outline-danger" title="Disable (soft-delete)">
-                                                    <i class="fas fa-trash"></i>
-                                                </button>
-                                            </form>
+                                            <?php if ($prod['is_active']): ?>
+                                                <!-- Disable button for active products -->
+                                                <form method="POST" class="d-inline">
+                                                    <input type="hidden" name="product_id" value="<?php echo $prod['id']; ?>">
+                                                    <button type="submit" name="toggle_product" value="disable" class="btn btn-outline-warning" onclick="return confirm('Disable this product? It will be hidden from active lists but history remains.')" title="Disable Product">
+                                                        <i class="fas fa-ban"></i>
+                                                    </button>
+                                                </form>
+                                            <?php else: ?>
+                                                <!-- Enable button for disabled products -->
+                                                <form method="POST" class="d-inline">
+                                                    <input type="hidden" name="product_id" value="<?php echo $prod['id']; ?>">
+                                                    <button type="submit" name="toggle_product" value="enable" class="btn btn-outline-success" onclick="return confirm('Enable this product?')" title="Enable Product">
+                                                        <i class="fas fa-check"></i>
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
+
+                                            <!-- Delete button (hard delete) - only shows for disabled products -->
+                                            <?php if (!$prod['is_active']): ?>
+                                                <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to permanently delete this product? This cannot be undone!')">
+                                                    <input type="hidden" name="product_id" value="<?php echo $prod['id']; ?>">
+                                                    <button type="submit" name="hard_delete_product" class="btn btn-outline-danger" title="Permanently Delete">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>
