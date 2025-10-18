@@ -262,20 +262,6 @@ if ($expiringProducts === false || $expiringProducts === null) {
 
 <?php if (isAdmin()): ?>
 <!-- Sales Chart -->
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0">
-                    <i class="fas fa-chart-area"></i> Sales Overview (Last 7 Days)
-                </h5>
-            </div>
-            <div class="card-body">
-                <canvas id="salesChart" height="100"></canvas>
-            </div>
-        </div>
-    </div>
-</div>
 
 <script>
 // Sales chart data - Last 7 days
