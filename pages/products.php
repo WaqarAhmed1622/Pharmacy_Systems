@@ -29,14 +29,39 @@ function getExpiryStatus($expiryDate) {
         return ['status' => 'valid', 'class' => 'bg-success', 'text' => 'Valid'];
     }
 }
+
 if (isset($_POST['ajax_search'])) {
     require_once '../includes/auth.php';
     require_once '../config/database.php';
     require_once '../includes/functions.php';
 
+    // Helper function for AJAX
+    function getExpiryStatus($expiryDate) {
+        if (empty($expiryDate)) {
+            return ['status' => 'none', 'class' => '', 'text' => ''];
+        }
+        
+        $expiry = strtotime($expiryDate);
+        $today = strtotime(date('Y-m-d'));
+        $daysUntilExpiry = floor(($expiry - $today) / (60 * 60 * 24));
+        
+        if ($daysUntilExpiry < 0) {
+            return ['status' => 'expired', 'class' => 'bg-danger', 'text' => 'Expired'];
+        } elseif ($daysUntilExpiry <= 30) {
+            return ['status' => 'expiring', 'class' => 'bg-warning', 'text' => $daysUntilExpiry . ' days'];
+        } else {
+            return ['status' => 'valid', 'class' => 'bg-success', 'text' => 'Valid'];
+        }
+    }
+
     $search = isset($_POST['search']) ? sanitizeInput($_POST['search']) : '';
     $category_filter = isset($_POST['category']) ? (int)$_POST['category'] : 0;
     $show_disabled = isset($_POST['show_disabled']) && $_POST['show_disabled'] == '1' ? 1 : 0;
+    $stock_status = isset($_POST['stock_status']) ? sanitizeInput($_POST['stock_status']) : '';
+    $manufacturer = isset($_POST['manufacturer']) ? sanitizeInput($_POST['manufacturer']) : '';
+    $expiry_status = isset($_POST['expiry_status']) ? sanitizeInput($_POST['expiry_status']) : '';
+    $price_range = isset($_POST['price_range']) ? sanitizeInput($_POST['price_range']) : '';
+    $non_selling = isset($_POST['non_selling']) ? (int)$_POST['non_selling'] : 0;
 
     $whereParts = [];
     $params = [];
@@ -49,17 +74,92 @@ if (isset($_POST['ajax_search'])) {
         $whereParts[] = "p.is_active = 1";
     }
 
+    // Search filter
     if (!empty($search)) {
-        $whereParts[] = "(p.name LIKE ? OR p.barcode LIKE ? OR p.description LIKE ?)";
+        $whereParts[] = "(p.name LIKE ? OR p.barcode LIKE ? OR p.description LIKE ? OR p.manufacturer LIKE ?)";
         $searchTerm = "%$search%";
-        $params[] = $searchTerm; $params[] = $searchTerm; $params[] = $searchTerm;
-        $types .= 'sss';
+        $params[] = $searchTerm; 
+        $params[] = $searchTerm; 
+        $params[] = $searchTerm;
+        $params[] = $searchTerm;
+        $types .= 'ssss';
     }
 
+    // Category filter
     if ($category_filter > 0) {
         $whereParts[] = "p.category_id = ?";
         $params[] = $category_filter;
         $types .= 'i';
+    }
+
+    // Stock status filter
+    if (!empty($stock_status)) {
+        if ($stock_status == 'out_of_stock') {
+            $whereParts[] = "p.stock_quantity <= 0";
+        } elseif ($stock_status == 'low_stock') {
+            $whereParts[] = "p.stock_quantity > 0 AND p.stock_quantity <= p.min_stock_level";
+        } elseif ($stock_status == 'in_stock') {
+            $whereParts[] = "p.stock_quantity > p.min_stock_level";
+        }
+    }
+
+    // Manufacturer filter
+    if (!empty($manufacturer)) {
+        $whereParts[] = "p.manufacturer = ?";
+        $params[] = $manufacturer;
+        $types .= 's';
+    }
+
+    // Expiry status filter
+    if (!empty($expiry_status)) {
+        $today = date('Y-m-d');
+        $thirtyDaysLater = date('Y-m-d', strtotime('+30 days'));
+        
+        if ($expiry_status == 'expired') {
+            $whereParts[] = "p.expiry_date IS NOT NULL AND p.expiry_date < ?";
+            $params[] = $today;
+            $types .= 's';
+        } elseif ($expiry_status == 'expiring_soon') {
+            $whereParts[] = "p.expiry_date IS NOT NULL AND p.expiry_date >= ? AND p.expiry_date <= ?";
+            $params[] = $today;
+            $params[] = $thirtyDaysLater;
+            $types .= 'ss';
+        } elseif ($expiry_status == 'valid') {
+            $whereParts[] = "p.expiry_date IS NOT NULL AND p.expiry_date > ?";
+            $params[] = $thirtyDaysLater;
+            $types .= 's';
+        } elseif ($expiry_status == 'no_expiry') {
+            $whereParts[] = "(p.expiry_date IS NULL OR p.expiry_date = '')";
+        }
+    }
+
+    // Price range filter
+    if (!empty($price_range)) {
+        if ($price_range == '0-50') {
+            $whereParts[] = "p.price >= 0 AND p.price <= 50";
+        } elseif ($price_range == '50-100') {
+            $whereParts[] = "p.price > 50 AND p.price <= 100";
+        } elseif ($price_range == '100-500') {
+            $whereParts[] = "p.price > 100 AND p.price <= 500";
+        } elseif ($price_range == '500-1000') {
+            $whereParts[] = "p.price > 500 AND p.price <= 1000";
+        } elseif ($price_range == '1000+') {
+            $whereParts[] = "p.price > 1000";
+        }
+    }
+
+    // Non-selling items filter
+    $nonSellingJoin = '';
+    if ($non_selling > 0) {
+        $daysAgo = date('Y-m-d', strtotime("-$non_selling days"));
+        $nonSellingJoin = "LEFT JOIN (
+            SELECT oi.product_id, MAX(o.order_date) as last_sale_date
+            FROM order_items oi
+            JOIN orders o ON oi.order_id = o.id
+            WHERE o.order_date >= '$daysAgo'
+            GROUP BY oi.product_id
+        ) recent_sales ON p.id = recent_sales.product_id";
+        $whereParts[] = "recent_sales.product_id IS NULL";
     }
 
     $whereClause = '';
@@ -140,6 +240,7 @@ if (isset($_POST['ajax_search'])) {
                 echo '<span class="badge bg-secondary">Disabled</span>';
             }
             echo '</td>';
+            echo '<td>';
             echo '<div class="btn-group btn-group-sm">';
             echo '<a href="?action=edit&id=' . $prod['id'] . '" class="btn btn-outline-primary">';
             echo '<i class="fas fa-edit"></i>';
@@ -304,34 +405,101 @@ if ($action == 'edit' && $productId) {
         $product = $productResult[0];
     }
 }
-
-// Get all products for listing with search functionality
+// Get all products for listing with advanced search functionality
 if ($action == 'list') {
     $search = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
     $category_filter = isset($_GET['category']) ? (int)$_GET['category'] : 0;
     $show_disabled = isset($_GET['show_disabled']) && $_GET['show_disabled'] == '1' ? 1 : 0;
+    $stock_status = isset($_GET['stock_status']) ? sanitizeInput($_GET['stock_status']) : '';
+    $manufacturer = isset($_GET['manufacturer']) ? sanitizeInput($_GET['manufacturer']) : '';
+    $expiry_status = isset($_GET['expiry_status']) ? sanitizeInput($_GET['expiry_status']) : '';
+    $price_range = isset($_GET['price_range']) ? sanitizeInput($_GET['price_range']) : '';
+    $non_selling = isset($_GET['non_selling']) ? (int)$_GET['non_selling'] : 0;
 
     $whereParts = [];
     $params = [];
     $types = '';
+    $havingParts = [];
 
+    // Active/Disabled filter
     if ($show_disabled) {
         $whereParts[] = "p.is_active = 0";
     } else {
         $whereParts[] = "p.is_active = 1";
     }
 
+    // Search filter
     if (!empty($search)) {
-        $whereParts[] = "(p.name LIKE ? OR p.barcode LIKE ? OR p.description LIKE ?)";
+        $whereParts[] = "(p.name LIKE ? OR p.barcode LIKE ? OR p.description LIKE ? OR p.manufacturer LIKE ?)";
         $searchTerm = "%$search%";
-        $params[] = $searchTerm; $params[] = $searchTerm; $params[] = $searchTerm;
-        $types .= 'sss';
+        $params[] = $searchTerm; 
+        $params[] = $searchTerm; 
+        $params[] = $searchTerm;
+        $params[] = $searchTerm;
+        $types .= 'ssss';
     }
 
+    // Category filter
     if ($category_filter > 0) {
         $whereParts[] = "p.category_id = ?";
         $params[] = $category_filter;
         $types .= 'i';
+    }
+
+    // Stock status filter
+    if (!empty($stock_status)) {
+        if ($stock_status == 'out_of_stock') {
+            $whereParts[] = "p.stock_quantity <= 0";
+        } elseif ($stock_status == 'low_stock') {
+            $whereParts[] = "p.stock_quantity > 0 AND p.stock_quantity <= p.min_stock_level";
+        } elseif ($stock_status == 'in_stock') {
+            $whereParts[] = "p.stock_quantity > p.min_stock_level";
+        }
+    }
+
+    // Manufacturer filter
+    if (!empty($manufacturer)) {
+        $whereParts[] = "p.manufacturer = ?";
+        $params[] = $manufacturer;
+        $types .= 's';
+    }
+
+    // Expiry status filter
+    if (!empty($expiry_status)) {
+        $today = date('Y-m-d');
+        $thirtyDaysLater = date('Y-m-d', strtotime('+30 days'));
+        
+        if ($expiry_status == 'expired') {
+            $whereParts[] = "p.expiry_date IS NOT NULL AND p.expiry_date < ?";
+            $params[] = $today;
+            $types .= 's';
+        } elseif ($expiry_status == 'expiring_soon') {
+            $whereParts[] = "p.expiry_date IS NOT NULL AND p.expiry_date >= ? AND p.expiry_date <= ?";
+            $params[] = $today;
+            $params[] = $thirtyDaysLater;
+            $types .= 'ss';
+        } elseif ($expiry_status == 'valid') {
+            $whereParts[] = "p.expiry_date IS NOT NULL AND p.expiry_date > ?";
+            $params[] = $thirtyDaysLater;
+            $types .= 's';
+        } elseif ($expiry_status == 'no_expiry') {
+            $whereParts[] = "(p.expiry_date IS NULL OR p.expiry_date = '')";
+        }
+    }
+
+    // Price range filter
+    if (!empty($price_range)) {
+        if ($price_range == '0-50') {
+            $whereParts[] = "p.price >= 0 AND p.price <= 50";
+        } elseif ($price_range == '50-100') {
+            $whereParts[] = "p.price > 50 AND p.price <= 100";
+        } elseif ($price_range == '100-500') {
+            $whereParts[] = "p.price > 100 AND p.price <= 500";
+        } elseif ($price_range == '500-1000') {
+            $whereParts[] = "p.price > 500 AND p.price <= 1000";
+        } elseif ($price_range == '1000+') {
+            $whereParts[] = "p.price > 1000";
+        }
     }
 
     $whereClause = '';
@@ -339,9 +507,27 @@ if ($action == 'list') {
         $whereClause = "WHERE " . implode(" AND ", $whereParts);
     }
 
+    // Non-selling items filter (requires subquery)
+    $nonSellingJoin = '';
+    if ($non_selling > 0) {
+        $daysAgo = date('Y-m-d', strtotime("-$non_selling days"));
+        $nonSellingJoin = "LEFT JOIN (
+            SELECT oi.product_id, MAX(o.order_date) as last_sale_date
+            FROM order_items oi
+            JOIN orders o ON oi.order_id = o.id
+            WHERE o.order_date >= '$daysAgo'
+            GROUP BY oi.product_id
+        ) recent_sales ON p.id = recent_sales.product_id";
+        $whereParts[] = "recent_sales.product_id IS NULL";
+        
+        // Rebuild WHERE clause
+        $whereClause = "WHERE " . implode(" AND ", $whereParts);
+    }
+
     $query = "SELECT p.*, c.name as category_name 
               FROM products p 
               LEFT JOIN categories c ON p.category_id = c.id 
+              $nonSellingJoin
               $whereClause
               ORDER BY p.name";
 
@@ -363,104 +549,204 @@ if ($action == 'list') {
 }
 ?>
 
-<?php if ($action == 'list'): ?>
-    <!-- Search and Filter Section (Moved to Top) -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h6 class="card-title mb-0">
-                <i class="fas fa-search"></i> Search & Filter Products
-            </h6>
-        </div>
-        <div class="card-body">
-            <form method="GET" class="row g-3" id="searchForm">
-                <input type="hidden" name="action" value="list">
-                <div class="col-md-6">
-                    <label class="form-label">Search Products</label>
-                    <input 
-                        type="text" 
-                        name="search" 
-                        id="searchInput"
-                        class="form-control" 
-                        placeholder="Start typing product name, barcode..."
-                        value="<?php echo isset($_GET['search']) ? sanitizeInput($_GET['search']) : ''; ?>"
-                        autocomplete="off"
-                    >
-                    <small class="text-muted">Search starts automatically as you type</small>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Filter by Category</label>
-                    <select name="category" class="form-select" id="categoryFilter">
-                        <option value="">All Categories</option>
-                        <?php foreach ($categories as $cat): ?>
-                            <option value="<?php echo $cat['id']; ?>" 
-                                    <?php echo (isset($_GET['category']) && $_GET['category'] == $cat['id']) ? 'selected' : ''; ?>>
-                                <?php echo sanitizeInput($cat['name']); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+<!-- Success/Error Messages -->
+<?php if ($error): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+<?php endif; ?>
 
-                <div class="col-md-2">
-                    <label class="form-label">&nbsp;</label>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="1" id="showDisabled" name="show_disabled"
-                            <?php echo isset($_GET['show_disabled']) && $_GET['show_disabled'] == '1' ? 'checked' : ''; ?>>
-                        <label class="form-check-label small" for="showDisabled">
-                            Show Disabled Products
-                        </label>
+<?php if ($success): ?>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="fas fa-check-circle"></i> <?php echo $success; ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+<?php endif; ?>
+
+<?php if ($action == 'list'): ?>
+    <!-- Products List View -->
+    <!-- Search and Filter Section -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="card-title mb-0">
+                <i class="fas fa-filter"></i> Advanced Filters
+            </h6>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleFilters">
+                <i class="fas fa-chevron-down"></i> Show/Hide Filters
+            </button>
+        </div>
+        <div class="card-body" id="filtersSection">
+            <form method="GET" id="searchForm">
+                <input type="hidden" name="action" value="list">
+                
+                <!-- Row 1: Basic Search -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Search Products</label>
+                        <input 
+                            type="text" 
+                            name="search" 
+                            id="searchInput"
+                            class="form-control" 
+                            placeholder="Product name, barcode, generic name, brand..."
+                            value="<?php echo isset($_GET['search']) ? sanitizeInput($_GET['search']) : ''; ?>"
+                            autocomplete="off"
+                        >
+                        <small class="text-muted">Search starts automatically as you type</small>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <label class="form-label">Category</label>
+                        <select name="category" class="form-select filter-select" id="categoryFilter">
+                            <option value="">All Categories</option>
+                            <?php foreach ($categories as $cat): ?>
+                                <option value="<?php echo $cat['id']; ?>" 
+                                        <?php echo (isset($_GET['category']) && $_GET['category'] == $cat['id']) ? 'selected' : ''; ?>>
+                                    <?php echo sanitizeInput($cat['name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Stock Status</label>
+                        <select name="stock_status" class="form-select filter-select" id="stockStatusFilter">
+                            <option value="">All Stock Levels</option>
+                            <option value="in_stock" <?php echo (isset($_GET['stock_status']) && $_GET['stock_status'] == 'in_stock') ? 'selected' : ''; ?>>In Stock</option>
+                            <option value="low_stock" <?php echo (isset($_GET['stock_status']) && $_GET['stock_status'] == 'low_stock') ? 'selected' : ''; ?>>Low Stock</option>
+                            <option value="out_of_stock" <?php echo (isset($_GET['stock_status']) && $_GET['stock_status'] == 'out_of_stock') ? 'selected' : ''; ?>>Out of Stock</option>
+                        </select>
                     </div>
                 </div>
 
-                <div class="col-md-1 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary me-2">
-                        <i class="fas fa-search"></i>
-                    </button>
+                <!-- Row 2: Advanced Filters -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Manufacturer</label>
+                        <select name="manufacturer" class="form-select filter-select" id="manufacturerFilter">
+                            <option value="">All Manufacturers</option>
+                            <?php 
+                            // Get unique manufacturers
+                            $manufacturers = executeQuery("SELECT DISTINCT manufacturer FROM products WHERE manufacturer != '' AND manufacturer IS NOT NULL ORDER BY manufacturer");
+                            if ($manufacturers):
+                                foreach ($manufacturers as $mfr): 
+                            ?>
+                                <option value="<?php echo sanitizeInput($mfr['manufacturer']); ?>" 
+                                        <?php echo (isset($_GET['manufacturer']) && $_GET['manufacturer'] == $mfr['manufacturer']) ? 'selected' : ''; ?>>
+                                    <?php echo sanitizeInput($mfr['manufacturer']); ?>
+                                </option>
+                            <?php 
+                                endforeach;
+                            endif;
+                            ?>
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Expiry Status</label>
+                        <select name="expiry_status" class="form-select filter-select" id="expiryStatusFilter">
+                            <option value="">All Products</option>
+                            <option value="expired" <?php echo (isset($_GET['expiry_status']) && $_GET['expiry_status'] == 'expired') ? 'selected' : ''; ?>>Expired</option>
+                            <option value="expiring_soon" <?php echo (isset($_GET['expiry_status']) && $_GET['expiry_status'] == 'expiring_soon') ? 'selected' : ''; ?>>Expiring Soon (30 days)</option>
+                            <option value="valid" <?php echo (isset($_GET['expiry_status']) && $_GET['expiry_status'] == 'valid') ? 'selected' : ''; ?>>Valid (>30 days)</option>
+                            <option value="no_expiry" <?php echo (isset($_GET['expiry_status']) && $_GET['expiry_status'] == 'no_expiry') ? 'selected' : ''; ?>>No Expiry Date</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Price Range</label>
+                        <select name="price_range" class="form-select filter-select" id="priceRangeFilter">
+                            <option value="">All Prices</option>
+                            <option value="0-50" <?php echo (isset($_GET['price_range']) && $_GET['price_range'] == '0-50') ? 'selected' : ''; ?>>Rs 0 - 50</option>
+                            <option value="50-100" <?php echo (isset($_GET['price_range']) && $_GET['price_range'] == '50-100') ? 'selected' : ''; ?>>Rs 50 - 100</option>
+                            <option value="100-500" <?php echo (isset($_GET['price_range']) && $_GET['price_range'] == '100-500') ? 'selected' : ''; ?>>Rs 100 - 500</option>
+                            <option value="500-1000" <?php echo (isset($_GET['price_range']) && $_GET['price_range'] == '500-1000') ? 'selected' : ''; ?>>Rs 500 - 1000</option>
+                            <option value="1000+" <?php echo (isset($_GET['price_range']) && $_GET['price_range'] == '1000+') ? 'selected' : ''; ?>>Rs 1000+</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Non-Selling Items</label>
+                        <select name="non_selling" class="form-select filter-select" id="nonSellingFilter">
+                            <option value="">All Products</option>
+                            <option value="30" <?php echo (isset($_GET['non_selling']) && $_GET['non_selling'] == '30') ? 'selected' : ''; ?>>No sales (30 days)</option>
+                            <option value="60" <?php echo (isset($_GET['non_selling']) && $_GET['non_selling'] == '60') ? 'selected' : ''; ?>>No sales (60 days)</option>
+                            <option value="90" <?php echo (isset($_GET['non_selling']) && $_GET['non_selling'] == '90') ? 'selected' : ''; ?>>No sales (90 days)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Row 3: Checkboxes and Actions -->
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" value="1" id="showDisabled" name="show_disabled"
+                                <?php echo isset($_GET['show_disabled']) && $_GET['show_disabled'] == '1' ? 'checked' : ''; ?>>
+                            <label class="form-check-label" for="showDisabled">
+                                Show Disabled Products
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="col-md-9 d-flex align-items-end justify-content-end gap-2">
+                        <button type="button" class="btn btn-outline-secondary" id="clearFilters">
+                            <i class="fas fa-times"></i> Clear Filters
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Apply Filters
+                        </button>
+                    </div>
                 </div>
             </form>
 
             <!-- Results Counter -->
-            <div class="mt-2">
+            <div class="mt-3 pt-3 border-top">
                 <small class="text-muted" id="resultsCount">
                     <?php 
                     $totalProducts = is_array($products) ? count($products) : 0;
-                    if (isset($_GET['search']) || isset($_GET['category']) || isset($_GET['show_disabled'])) {
-                        $filterText = isset($_GET['show_disabled']) && $_GET['show_disabled'] == '1' ? 'disabled' : 'active';
-                        echo "Found $totalProducts $filterText products";
-                        if (isset($_GET['search']) && !empty($_GET['search'])) {
-                            echo " matching \"" . sanitizeInput($_GET['search']) . "\"";
-                        }
-                        if (isset($_GET['category']) && $_GET['category'] > 0) {
-                            $catName = '';
-                            foreach ($categories as $cat) {
-                                if ($cat['id'] == $_GET['category']) {
-                                    $catName = $cat['name'];
-                                    break;
-                                }
+                    $activeFilters = [];
+                    
+                    if (isset($_GET['search']) && !empty($_GET['search'])) {
+                        $activeFilters[] = "search: \"" . sanitizeInput($_GET['search']) . "\"";
+                    }
+                    if (isset($_GET['category']) && $_GET['category'] > 0) {
+                        foreach ($categories as $cat) {
+                            if ($cat['id'] == $_GET['category']) {
+                                $activeFilters[] = "category: " . $cat['name'];
+                                break;
                             }
-                            echo " in category \"$catName\"";
                         }
-                    } else {
-                        echo "Showing all $totalProducts active products";
+                    }
+                    if (isset($_GET['stock_status']) && !empty($_GET['stock_status'])) {
+                        $activeFilters[] = "stock: " . str_replace('_', ' ', $_GET['stock_status']);
+                    }
+                    if (isset($_GET['manufacturer']) && !empty($_GET['manufacturer'])) {
+                        $activeFilters[] = "manufacturer: " . sanitizeInput($_GET['manufacturer']);
+                    }
+                    if (isset($_GET['expiry_status']) && !empty($_GET['expiry_status'])) {
+                        $activeFilters[] = "expiry: " . str_replace('_', ' ', $_GET['expiry_status']);
+                    }
+                    if (isset($_GET['price_range']) && !empty($_GET['price_range'])) {
+                        $activeFilters[] = "price: Rs " . $_GET['price_range'];
+                    }
+                    if (isset($_GET['non_selling']) && !empty($_GET['non_selling'])) {
+                        $activeFilters[] = "non-selling: " . $_GET['non_selling'] . " days";
+                    }
+                    if (isset($_GET['show_disabled']) && $_GET['show_disabled'] == '1') {
+                        $activeFilters[] = "showing disabled";
+                    }
+                    
+                    echo "Found <strong>$totalProducts</strong> products";
+                    if (!empty($activeFilters)) {
+                        echo " | Filters: " . implode(', ', $activeFilters);
                     }
                     ?>
                 </small>
             </div>
         </div>
     </div>
-     <!-- Success/Error Messages -->
-    <?php if ($error): ?>
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    <?php endif; ?>
-
-    <?php if ($success): ?>
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="fas fa-check-circle"></i> <?php echo $success; ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    <?php endif; ?>               
+         
     <!-- Products List -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3><i class="fas fa-box"></i> Products Management</h3>
@@ -503,6 +789,39 @@ if ($action == 'list') {
                                 </td>
                             </tr>
                         <?php else: ?>
+                            <style>
+        .filter-select {
+            font-size: 0.9rem;
+        }
+        
+        #filtersSection {
+            transition: all 0.3s ease;
+        }
+        
+        .form-label {
+            font-weight: 500;
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+        }
+        
+        #resultsCount strong {
+            color: #667eea;
+        }
+        
+        .list-group-item {
+            border-left: none;
+            border-right: none;
+        }
+        
+        .list-group-item:first-child {
+            border-top: none;
+        }
+    </style>
                             <?php foreach ($products as $prod): ?>
                                 <tr class="product-row <?php echo $prod['stock_quantity'] <= 0 ? 'table-danger' : ($prod['stock_quantity'] <= $prod['min_stock_level'] ? 'table-warning' : ''); ?>">
                                     <td>
@@ -594,74 +913,130 @@ if ($action == 'list') {
         </div>
     </div>
 
-    <?php if ($error): ?>
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    <?php endif; ?>
-
-    <?php if ($success): ?>
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="fas fa-check-circle"></i> <?php echo $success; ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    <?php endif; ?>
-
     <script>
     // Simple live search functionality with show_disabled support
     let searchTimeout;
 
     function performSearch() {
-        const searchTerm = document.getElementById('searchInput').value;
-        const categoryId = document.getElementById('categoryFilter').value;
-        const showDisabled = document.getElementById('showDisabled').checked ? '1' : '0';
+    const searchTerm = document.getElementById('searchInput').value;
+    const categoryId = document.getElementById('categoryFilter').value;
+    const showDisabled = document.getElementById('showDisabled').checked ? '1' : '0';
+    const stockStatus = document.getElementById('stockStatusFilter').value;
+    const manufacturer = document.getElementById('manufacturerFilter').value;
+    const expiryStatus = document.getElementById('expiryStatusFilter').value;
+    const priceRange = document.getElementById('priceRangeFilter').value;
+    const nonSelling = document.getElementById('nonSellingFilter').value;
 
-        clearTimeout(searchTimeout);
+    clearTimeout(searchTimeout);
 
-        searchTimeout = setTimeout(function() {
-            if (searchTerm.length >= 2 || categoryId || searchTerm.length === 0 || showDisabled === '1') {
-                // Show loading
+    searchTimeout = setTimeout(function() {
+        // Trigger search if any filter is active
+        const hasActiveFilter = searchTerm.length >= 2 || categoryId || stockStatus || 
+                               manufacturer || expiryStatus || priceRange || nonSelling ||
+                               searchTerm.length === 0 || showDisabled === '1';
+        
+        if (hasActiveFilter) {
+            // Show loading
+            document.getElementById('productsTableBody').innerHTML = 
+                '<tr><td colspan="11" class="text-center py-4"><i class="fas fa-spinner fa-spin"></i> Searching...</td></tr>';
+
+            // Create form data
+            const formData = new FormData();
+            formData.append('ajax_search', '1');
+            formData.append('search', searchTerm);
+            formData.append('category', categoryId);
+            formData.append('show_disabled', showDisabled);
+            formData.append('stock_status', stockStatus);
+            formData.append('manufacturer', manufacturer);
+            formData.append('expiry_status', expiryStatus);
+            formData.append('price_range', priceRange);
+            formData.append('non_selling', nonSelling);
+
+            // Send request
+            fetch(window.location.pathname + window.location.search, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(data => {
+                document.getElementById('productsTableBody').innerHTML = data;
+
+                // Update counter with active filters
+                const rows = document.querySelectorAll('.product-row');
+                let activeFilters = [];
+                
+                if (searchTerm) activeFilters.push('search: "' + searchTerm + '"');
+                if (categoryId) {
+                    const catSelect = document.getElementById('categoryFilter');
+                    activeFilters.push('category: ' + catSelect.options[catSelect.selectedIndex].text);
+                }
+                if (stockStatus) activeFilters.push('stock: ' + stockStatus.replace('_', ' '));
+                if (manufacturer) activeFilters.push('manufacturer: ' + manufacturer);
+                if (expiryStatus) activeFilters.push('expiry: ' + expiryStatus.replace('_', ' '));
+                if (priceRange) activeFilters.push('price: Rs ' + priceRange);
+                if (nonSelling) activeFilters.push('non-selling: ' + nonSelling + ' days');
+                if (showDisabled === '1') activeFilters.push('showing disabled');
+                
+                let countText = 'Found <strong>' + rows.length + '</strong> products';
+                if (activeFilters.length > 0) {
+                    countText += ' | Filters: ' + activeFilters.join(', ');
+                }
+                
+                document.getElementById('resultsCount').innerHTML = countText;
+            })
+            .catch(error => {
                 document.getElementById('productsTableBody').innerHTML = 
-                    '<tr><td colspan="11" class="text-center py-4">Searching...</td></tr>';
+                    '<tr><td colspan="11" class="text-center py-4 text-danger"><i class="fas fa-exclamation-triangle"></i> Search error. Please try again.</td></tr>';
+            });
+        }
+    }, 300);
+}
+    // Add event listeners for all filter dropdowns
+document.getElementById('searchInput').addEventListener('input', performSearch);
+document.getElementById('categoryFilter').addEventListener('change', performSearch);
+document.getElementById('showDisabled').addEventListener('change', function() {
+    // submit the GET form to persist show_disabled in URL
+    document.getElementById('searchForm').submit();
+});
 
-                // Create form data
-                const formData = new FormData();
-                formData.append('ajax_search', '1');
-                formData.append('search', searchTerm);
-                formData.append('category', categoryId);
-                formData.append('show_disabled', showDisabled);
+// Add event listeners for new filters
+document.getElementById('stockStatusFilter').addEventListener('change', performSearch);
+document.getElementById('manufacturerFilter').addEventListener('change', performSearch);
+document.getElementById('expiryStatusFilter').addEventListener('change', performSearch);
+document.getElementById('priceRangeFilter').addEventListener('change', performSearch);
+document.getElementById('nonSellingFilter').addEventListener('change', performSearch);
 
-                // Send request
-                fetch(window.location.pathname + window.location.search, {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.text())
-                .then(data => {
-                    document.getElementById('productsTableBody').innerHTML = data;
+// Clear filters button
+document.getElementById('clearFilters').addEventListener('click', function() {
+    // Clear all form inputs
+    document.getElementById('searchInput').value = '';
+    document.getElementById('categoryFilter').selectedIndex = 0;
+    document.getElementById('stockStatusFilter').selectedIndex = 0;
+    document.getElementById('manufacturerFilter').selectedIndex = 0;
+    document.getElementById('expiryStatusFilter').selectedIndex = 0;
+    document.getElementById('priceRangeFilter').selectedIndex = 0;
+    document.getElementById('nonSellingFilter').selectedIndex = 0;
+    document.getElementById('showDisabled').checked = false;
+    
+    // Redirect to clean URL
+    window.location.href = '?action=list';
+});
 
-                    // Update counter
-                    const rows = document.querySelectorAll('.product-row');
-                    let countText = 'Found ' + rows.length + ' products';
-                    if (searchTerm) countText += ' matching "' + searchTerm + '"';
-                    document.getElementById('resultsCount').textContent = countText;
-                })
-                .catch(error => {
-                    document.getElementById('productsTableBody').innerHTML = 
-                        '<tr><td colspan="11" class="text-center py-4 text-danger">Search error. Please try again.</td></tr>';
-                });
-            }
-        }, 300);
+// Toggle filters visibility
+document.getElementById('toggleFilters').addEventListener('click', function() {
+    const filtersSection = document.getElementById('filtersSection');
+    const icon = this.querySelector('i');
+    
+    if (filtersSection.style.display === 'none') {
+        filtersSection.style.display = 'block';
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-up');
+    } else {
+        filtersSection.style.display = 'none';
+        icon.classList.remove('fa-chevron-up');
+        icon.classList.add('fa-chevron-down');
     }
-
-    // Add event listeners
-    document.getElementById('searchInput').addEventListener('input', performSearch);
-    document.getElementById('categoryFilter').addEventListener('change', performSearch);
-    document.getElementById('showDisabled').addEventListener('change', function() {
-        // submit the GET form to persist show_disabled in URL
-        document.getElementById('searchForm').submit();
-    });
+});
    </script>
 
     <?php if ($success && strpos($success, 'added successfully') !== false): ?>
@@ -680,9 +1055,8 @@ if ($action == 'list') {
     </script>
     <?php endif; ?>
 
-    <?php else: ?>
-    <!-- Add/Edit Product Form (unchanged, left intact) -->
-    <!-- Add/Edit Product Form (unchanged, left intact) -->
+<?php elseif ($action == 'add' || $action == 'edit'): ?>
+    <!-- Add/Edit Product Form View -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3>
             <i class="fas fa-<?php echo $action == 'add' ? 'plus' : 'edit'; ?>"></i> 
