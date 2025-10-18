@@ -22,6 +22,21 @@ if (isAdmin()) {
     $userCountResult = executeQuery("SELECT COUNT(*) as count FROM users WHERE is_active = 1");
     $userCount = $userCountResult[0]['count'];
 }
+// Get expiring products (expires within 30 days)
+$expiringProducts = executeQuery("
+    SELECT * FROM products 
+    WHERE is_active = 1 
+    AND expiry_date IS NOT NULL 
+    AND (
+        expiry_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+        OR expiry_date < CURDATE()
+    )
+    ORDER BY expiry_date ASC
+");
+
+if ($expiringProducts === false || $expiringProducts === null) {
+    $expiringProducts = [];
+}
 ?>
 
 <!-- Statistics Cards -->
@@ -75,7 +90,7 @@ if (isAdmin()) {
 
 <div class="row">
     <!-- Quick Actions -->
-    <div class="col-md-4 mb-4">
+    <div class="col-md-3 mb-4">
         <div class="card h-100">
             <div class="card-header">
                 <h5 class="card-title mb-0">
@@ -139,7 +154,7 @@ if (isAdmin()) {
         </div>
     </div>
     
-    <!-- Low Stock Alerts -->
+   <!-- Low Stock Alerts -->
     <div class="col-md-4 mb-4">
         <div class="card h-100">
             <div class="card-header">
@@ -181,6 +196,68 @@ if (isAdmin()) {
             </div>
         </div>
     </div>
+
+    <!-- Expiry Alerts -->
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-calendar-times text-danger"></i> Expiry Alerts
+                </h5>
+            </div>
+            <div class="card-body">
+                <?php if (empty($expiringProducts)): ?>
+                    <p class="text-muted">No products expiring soon</p>
+                <?php else: ?>
+                    <div class="list-group list-group-flush">
+                        <?php foreach (array_slice($expiringProducts, 0, 5) as $product): 
+                            $expiryDate = strtotime($product['expiry_date']);
+                            $today = strtotime(date('Y-m-d'));
+                            $daysUntilExpiry = floor(($expiryDate - $today) / (60 * 60 * 24));
+                            
+                            $isExpired = $daysUntilExpiry < 0;
+                            $isExpiringSoon = $daysUntilExpiry >= 0 && $daysUntilExpiry <= 30;
+                            
+                            $bgClass = $isExpired ? 'bg-danger-subtle' : 'bg-warning-subtle';
+                            $badgeClass = $isExpired ? 'bg-danger' : 'bg-warning';
+                        ?>
+                            <div class="list-group-item px-0 <?php echo $bgClass; ?>">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="flex-grow-1">
+                                        <strong><?php echo sanitizeInput($product['name']); ?></strong>
+                                        <br>
+                                        <small class="text-muted"><?php echo sanitizeInput($product['barcode']); ?></small>
+                                    </div>
+                                    <div class="text-end">
+                                        <span class="badge <?php echo $badgeClass; ?>">
+                                            <?php 
+                                            if ($isExpired) {
+                                                echo 'Expired';
+                                            } else {
+                                                echo $daysUntilExpiry . ' days';
+                                            }
+                                            ?>
+                                        </span>
+                                        <br>
+                                        <small class="text-muted"><?php echo date('M d, Y', $expiryDate); ?></small>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    
+                    <?php if (count($expiringProducts) > 5): ?>
+                        <div class="text-center mt-3">
+                            <a href="products.php" class="btn btn-sm btn-outline-danger">
+                                View All (<?php echo count($expiringProducts); ?> items)
+                            </a>
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
 </div>
 
 <?php if (isAdmin()): ?>

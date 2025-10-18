@@ -11,6 +11,24 @@
  * - Normalizes $products variable to an array to avoid count() errors
  */
 
+// Helper function to get expiry status
+function getExpiryStatus($expiryDate) {
+    if (empty($expiryDate)) {
+        return ['status' => 'none', 'class' => '', 'text' => ''];
+    }
+    
+    $expiry = strtotime($expiryDate);
+    $today = strtotime(date('Y-m-d'));
+    $daysUntilExpiry = floor(($expiry - $today) / (60 * 60 * 24));
+    
+    if ($daysUntilExpiry < 0) {
+        return ['status' => 'expired', 'class' => 'bg-danger', 'text' => 'Expired'];
+    } elseif ($daysUntilExpiry <= 30) {
+        return ['status' => 'expiring', 'class' => 'bg-warning', 'text' => $daysUntilExpiry . ' days'];
+    } else {
+        return ['status' => 'valid', 'class' => 'bg-success', 'text' => 'Valid'];
+    }
+}
 if (isset($_POST['ajax_search'])) {
     require_once '../includes/auth.php';
     require_once '../config/database.php';
@@ -99,6 +117,7 @@ if (isset($_POST['ajax_search'])) {
             echo '</td>';
             echo '<td>';
             if ($prod['is_active']) {
+                // Stock status
                 if ($prod['stock_quantity'] <= 0) {
                     echo '<span class="badge bg-danger">Out of Stock</span>';
                 } elseif ($prod['stock_quantity'] <= $prod['min_stock_level']) {
@@ -106,11 +125,21 @@ if (isset($_POST['ajax_search'])) {
                 } else {
                     echo '<span class="badge bg-success">In Stock</span>';
                 }
-                echo '<br><small class="text-muted">Active</small>';
+                echo '<br>';
+                
+                // Expiry status
+                $expiryStatus = getExpiryStatus($prod['expiry_date']);
+                if ($expiryStatus['status'] !== 'none') {
+                    echo '<span class="badge ' . $expiryStatus['class'] . ' mt-1">';
+                    echo '<i class="fas fa-calendar-alt"></i> ' . $expiryStatus['text'];
+                    echo '</span><br>';
+                }
+                
+                echo '<small class="text-muted">Active</small>';
             } else {
                 echo '<span class="badge bg-secondary">Disabled</span>';
             }
-            echo '<td>';
+            echo '</td>';
             echo '<div class="btn-group btn-group-sm">';
             echo '<a href="?action=edit&id=' . $prod['id'] . '" class="btn btn-outline-primary">';
             echo '<i class="fas fa-edit"></i>';
@@ -504,7 +533,19 @@ if ($action == 'list') {
                                             <?php else: ?>
                                                 <span class="badge bg-success">In Stock</span>
                                             <?php endif; ?>
-                                            <br><small class="text-muted">Active</small>
+                                            <br>
+                                            
+                                            <?php 
+                                            $expiryStatus = getExpiryStatus($prod['expiry_date']);
+                                            if ($expiryStatus['status'] !== 'none'): 
+                                            ?>
+                                                <span class="badge <?php echo $expiryStatus['class']; ?> mt-1">
+                                                    <i class="fas fa-calendar-alt"></i> <?php echo $expiryStatus['text']; ?>
+                                                </span>
+                                                <br>
+                                            <?php endif; ?>
+                                            
+                                            <small class="text-muted">Active</small>
                                         <?php else: ?>
                                             <span class="badge bg-secondary">Disabled</span>
                                         <?php endif; ?>
