@@ -163,16 +163,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['ajax_search'])) {
     // Add or Edit
     if (isset($_POST['add_product']) || isset($_POST['edit_product'])) {
         $name = sanitizeInput($_POST['name']);
-        $barcode = sanitizeInput($_POST['barcode']);
-        $categoryId = isset($_POST['category_id']) ? (int)$_POST['category_id'] : 0;
-        $price = isset($_POST['price']) && is_numeric($_POST['price']) ? (float)$_POST['price'] : 0.0;
-        $cost = isset($_POST['cost']) && is_numeric($_POST['cost']) ? (float)$_POST['cost'] : 0.0;
-        $stockQuantity = isset($_POST['stock_quantity']) && is_numeric($_POST['stock_quantity']) ? (int)$_POST['stock_quantity'] : 0;
-        $minStockLevel = isset($_POST['min_stock_level']) && is_numeric($_POST['min_stock_level']) ? (int)$_POST['min_stock_level'] : 0;
-        $description = sanitizeInput($_POST['description']);
-        $manufacturer = isset($_POST['manufacturer']) ? sanitizeInput($_POST['manufacturer']) : '';
-        $expiryDate = isset($_POST['expiry_date']) && !empty($_POST['expiry_date']) ? sanitizeInput($_POST['expiry_date']) : null;
-        $manufacturingDate = isset($_POST['manufacturing_date']) && !empty($_POST['manufacturing_date']) ? sanitizeInput($_POST['manufacturing_date']) : null;
+    $barcode = sanitizeInput($_POST['barcode']);
+    $categoryId = isset($_POST['category_id']) ? (int)$_POST['category_id'] : 0;
+    $price = isset($_POST['price']) && is_numeric($_POST['price']) ? (float)$_POST['price'] : 0.0;
+    $cost = isset($_POST['cost']) && is_numeric($_POST['cost']) ? (float)$_POST['cost'] : 0.0;
+    $stockQuantity = isset($_POST['stock_quantity']) && is_numeric($_POST['stock_quantity']) ? (int)$_POST['stock_quantity'] : 0;
+    $minStockLevel = isset($_POST['min_stock_level']) && is_numeric($_POST['min_stock_level']) ? (int)$_POST['min_stock_level'] : 0;
+    $description = sanitizeInput($_POST['description']);
+    $manufacturer = isset($_POST['manufacturer']) ? sanitizeInput($_POST['manufacturer']) : '';
+    $expiryDate = isset($_POST['expiry_date']) && !empty($_POST['expiry_date']) ? sanitizeInput($_POST['expiry_date']) : null;
+    $manufacturingDate = isset($_POST['manufacturing_date']) && !empty($_POST['manufacturing_date']) ? sanitizeInput($_POST['manufacturing_date']) : null;
 
         // Validation
         if (empty($name) || $price <= 0 || $cost <= 0) {
@@ -191,6 +191,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['ajax_search'])) {
                 if (executeNonQuery($query, $types, $params)) {
                     $success = 'Product added successfully.';
                     logActivity('Added product', $_SESSION['user_id'], "Product: $name");
+                    $action='list';
                 } else {
                     $error = 'Failed to add product.';
                 }
@@ -417,7 +418,20 @@ if ($action == 'list') {
             </div>
         </div>
     </div>
+     <!-- Success/Error Messages -->
+    <?php if ($error): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php endif; ?>
 
+    <?php if ($success): ?>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="fas fa-check-circle"></i> <?php echo $success; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php endif; ?>               
     <!-- Products List -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3><i class="fas fa-box"></i> Products Management</h3>
@@ -540,11 +554,17 @@ if ($action == 'list') {
     </div>
 
     <?php if ($error): ?>
-        <div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> <?php echo $error; ?></div>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
     <?php endif; ?>
 
     <?php if ($success): ?>
-        <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo $success; ?></div>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="fas fa-check-circle"></i> <?php echo $success; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
     <?php endif; ?>
 
     <script>
@@ -601,9 +621,26 @@ if ($action == 'list') {
         // submit the GET form to persist show_disabled in URL
         document.getElementById('searchForm').submit();
     });
-    </script>
+   </script>
 
-<?php else: ?>
+    <?php if ($success && strpos($success, 'added successfully') !== false): ?>
+    <script>
+        // Auto-scroll to top to show success message
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        
+        // Auto-dismiss success message after 5 seconds
+        setTimeout(function() {
+            const alert = document.querySelector('.alert-success');
+            if (alert) {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            }
+        }, 5000);
+    </script>
+    <?php endif; ?>
+
+    <?php else: ?>
+    <!-- Add/Edit Product Form (unchanged, left intact) -->
     <!-- Add/Edit Product Form (unchanged, left intact) -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3>
@@ -614,11 +651,6 @@ if ($action == 'list') {
             <i class="fas fa-arrow-left"></i> Back to List
         </a>
     </div>
-
-    <?php if ($error): ?>
-        <div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> <?php echo $error; ?></div>
-    <?php endif; ?>
-
     <div class="row">
         <div class="col-md-8">
             <div class="card">
