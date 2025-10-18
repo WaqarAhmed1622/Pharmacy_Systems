@@ -35,25 +35,6 @@ if (isset($_POST['ajax_search'])) {
     require_once '../config/database.php';
     require_once '../includes/functions.php';
 
-    // Helper function for AJAX
-    function getExpiryStatus($expiryDate) {
-        if (empty($expiryDate)) {
-            return ['status' => 'none', 'class' => '', 'text' => ''];
-        }
-        
-        $expiry = strtotime($expiryDate);
-        $today = strtotime(date('Y-m-d'));
-        $daysUntilExpiry = floor(($expiry - $today) / (60 * 60 * 24));
-        
-        if ($daysUntilExpiry < 0) {
-            return ['status' => 'expired', 'class' => 'bg-danger', 'text' => 'Expired'];
-        } elseif ($daysUntilExpiry <= 30) {
-            return ['status' => 'expiring', 'class' => 'bg-warning', 'text' => $daysUntilExpiry . ' days'];
-        } else {
-            return ['status' => 'valid', 'class' => 'bg-success', 'text' => 'Valid'];
-        }
-    }
-
     $search = isset($_POST['search']) ? sanitizeInput($_POST['search']) : '';
     $category_filter = isset($_POST['category']) ? (int)$_POST['category'] : 0;
     $show_disabled = isset($_POST['show_disabled']) && $_POST['show_disabled'] == '1' ? 1 : 0;
