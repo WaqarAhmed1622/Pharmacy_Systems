@@ -1,12 +1,18 @@
 <?php
 
-ob_start();
-/**
- * Orders History Page
- * View order history and details with discount information
-*/
 
+require_once '../config/database.php';
+require_once '../includes/functions.php';
+require_once '../includes/export.php';
+
+$search = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
+
+if (isset($_GET['export'])) {
+    $exportSearch = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
+    exportOrdersToCSV($exportSearch);
+}
 // Handle order status update (add this after the search params section, before the queries)
+ob_start();
 require_once '../includes/header.php';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
@@ -52,7 +58,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
     }
 }
 
-$search = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $limit = 20;
 $offset = ($page - 1) * $limit;
@@ -307,9 +312,12 @@ document.getElementById('statusSelect').addEventListener('change', function() {
 <?php else: ?>
     
     <!-- Orders List View -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3><i class="fas fa-receipt"></i> Orders History</h3>
-    </div>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="fas fa-receipt"></i> Orders History</h3>
+    <a href="?export=1&search=<?php echo urlencode($search); ?>" class="btn btn-success">
+        <i class="fas fa-download"></i> Export to CSV
+    </a>
+</div>
     
     <!-- Search Form -->
     <div class="card mb-4">

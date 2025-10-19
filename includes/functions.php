@@ -106,17 +106,22 @@ function getSalesStats($period = 'today') {
     
     switch ($period) {
         case 'today':
-            $whereClause = "WHERE DATE(order_date) = CURDATE()";
+            $whereClause = "WHERE DATE(order_date) = CURDATE() AND status != 'returned'";
+            break;
+        case 'yesterday':
+            $whereClause = "WHERE DATE(order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND status != 'returned'";
             break;
         case 'week':
-            $whereClause = "WHERE YEARWEEK(order_date) = YEARWEEK(CURDATE())";
+            $whereClause = "WHERE YEARWEEK(order_date) = YEARWEEK(CURDATE()) AND status != 'returned'";
             break;
         case 'month':
-            $whereClause = "WHERE MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE())";
+            $whereClause = "WHERE MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE()) AND status != 'returned'";
             break;
         case 'year':
-            $whereClause = "WHERE YEAR(order_date) = YEAR(CURDATE())";
+            $whereClause = "WHERE YEAR(order_date) = YEAR(CURDATE()) AND status != 'returned'";
             break;
+        default:
+            $whereClause = "WHERE DATE(order_date) = CURDATE() AND status != 'returned'";
     }
     
     $query = "SELECT 

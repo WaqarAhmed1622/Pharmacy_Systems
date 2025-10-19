@@ -105,3 +105,11 @@
 2025-10-18 18:27:46 - User 1: Order Returned - Order ID: 13, Amount Refunded: Rs 10.45
 2025-10-18 22:06:44 - User 1: Updated product - Product ID: 1
 2025-10-18 19:07:56 - User 1: User logged out - 
+2025-10-18 22:10:04 - User 1: Added product - Product: Sample Product
+2025-10-19 12:14:01 - User 1: Order Returned - Order ID: 16, Amount Refunded: Rs 5.23
+2025-10-19 12:14:22 - User 1: Order Status Updated - Order ID: 16, New Status: completed
+2025-10-19 12:18:25 - User 1: Order Returned - Order ID: 17, Amount Refunded: Rs 20.90
+2025-10-19 12:31:28 - User 1: Hard deleted product - Product: Hello (ID: 12)
+2025-10-19 12:31:31 - User 1: Hard deleted product - Product: mtk (ID: 13)
+2025-10-19 12:31:37 - User 1: Hard deleted product - Product: Sample Product (ID: 16)
+2025-10-19 12:31:40 - User 1: Hard deleted product - Product: Sample Product 3 (ID: 15)

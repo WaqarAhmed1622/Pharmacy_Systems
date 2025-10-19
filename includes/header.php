@@ -43,7 +43,7 @@ checkSessionTimeout();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pharmacy Management System</title>
-    <link rel="icon" href="./assets/favicon.jpg" type="image/x-icon">
+    <link rel="icon" href="../assets/logo.jpg" type="image/x-icon">
     
     <!-- Embedded Bootstrap CSS (Offline) -->
     <style>

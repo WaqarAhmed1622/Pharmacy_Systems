@@ -4,14 +4,9 @@
  * Admin only - View sales analytics and reports
  */
 
-require_once '../includes/header.php';
-requireAdmin();
+require_once '../config/database.php';
+require_once '../includes/export.php';
 
-$period = isset($_GET['period']) ? $_GET['period'] : 'today';
-$customStart = isset($_GET['start']) ? $_GET['start'] : date('Y-m-d');
-$customEnd = isset($_GET['end']) ? $_GET['end'] : date('Y-m-d');
-
-// Get sales data based on period
 function getSalesData($period, $start = null, $end = null) {
     $whereClause = '';
     $params = [];
@@ -98,9 +93,61 @@ function getTopProducts($period, $start = null, $end = null, $limit = 10) {
     return executeQuery($query, str_repeat('s', count($params)), $params);
 }
 
-// Get sales data
+$period = isset($_GET['period']) ? $_GET['period'] : 'today';
+$customStart = isset($_GET['start']) ? $_GET['start'] : date('Y-m-d');
+$customEnd = isset($_GET['end']) ? $_GET['end'] : date('Y-m-d');
+
+
+// Handle export
+if (isset($_GET['export'])) {
+    exportSalesReportToCSV($period, $customStart, $customEnd);
+}
+
+require_once '../includes/header.php';
+requireAdmin();
+
+
 $salesData = getSalesData($period, $customStart, $customEnd);
 $topProducts = getTopProducts($period, $customStart, $customEnd);
+
+// Calculate actual profit using product cost prices
+$whereClause = '';
+$params = [];
+
+switch ($period) {
+    case 'today':
+        $whereClause = "WHERE DATE(o.order_date) = CURDATE() AND o.status != 'returned'";
+        break;
+    case 'yesterday':
+        $whereClause = "WHERE DATE(o.order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND o.status != 'returned'";
+        break;
+    case 'week':
+        $whereClause = "WHERE YEARWEEK(o.order_date) = YEARWEEK(CURDATE()) AND o.status != 'returned'";
+        break;
+    case 'month':
+        $whereClause = "WHERE MONTH(o.order_date) = MONTH(CURDATE()) AND YEAR(o.order_date) = YEAR(CURDATE()) AND o.status != 'returned'";
+        break;
+    case 'year':
+        $whereClause = "WHERE YEAR(o.order_date) = YEAR(CURDATE()) AND o.status != 'returned'";
+        break;
+    case 'custom':
+        if ($customStart && $customEnd) {
+            $whereClause = "WHERE DATE(o.order_date) BETWEEN ? AND ? AND o.status != 'returned'";
+            $params = [$customStart, $customEnd];
+        }
+        break;
+}
+
+$costQuery = "SELECT COALESCE(SUM(oi.quantity * p.cost), 0) as total_cost
+              FROM order_items oi
+              JOIN products p ON oi.product_id = p.id
+              JOIN orders o ON oi.order_id = o.id
+              $whereClause";
+
+$costResult = executeQuery($costQuery, str_repeat('s', count($params)), $params);
+$totalCost = $costResult ? $costResult[0]['total_cost'] : 0;
+$totalProfit = $salesData['total_sales'] - $totalCost;
+$profitMargin = $salesData['total_sales'] > 0 ? (($totalProfit / $salesData['total_sales']) * 100) : 0;
 
 // Get daily sales for chart (last 30 days)
 $chartData = [];
@@ -118,13 +165,17 @@ for ($i = 29; $i >= 0; $i--) {
 ?>
 
 <!-- Period Selection -->
+<!-- Period Selection -->
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">
                     <i class="fas fa-chart-line"></i> Sales Reports
                 </h5>
+                <a href="?period=<?php echo $period; ?>&start=<?php echo $customStart; ?>&end=<?php echo $customEnd; ?>&export=1" class="btn btn-success btn-sm">
+                    <i class="fas fa-download"></i> Export Report
+                </a>
             </div>
             <div class="card-body">
                 <form method="GET" class="row g-3">
@@ -161,6 +212,7 @@ for ($i = 29; $i >= 0; $i--) {
     </div>
 </div>
 
+<!-- Sales Statistics -->
 <!-- Sales Statistics -->
 <div class="row mb-4">
     <div class="col-md-3 mb-3">
@@ -199,6 +251,27 @@ for ($i = 29; $i >= 0; $i--) {
                 <i class="fas fa-percentage fa-2x mb-2"></i>
                 <h4 class="card-title"><?php echo formatCurrency($salesData['total_tax']); ?></h4>
                 <p class="card-text">Total Tax</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card-profit h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-money-bill-wave fa-2x mb-2"></i>
+                <h4 class="card-title"><?php echo formatCurrency($totalProfit); ?></h4>
+                <p class="card-text">Net Profit</p>
+                <small class="text-muted"><?php echo round($profitMargin, 2); ?>% margin</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card-cost h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-box fa-2x mb-2"></i>
+                <h4 class="card-title"><?php echo formatCurrency($totalCost); ?></h4>
+                <p class="card-text">Total Cost</p>
             </div>
         </div>
     </div>
@@ -464,6 +537,28 @@ new Chart(ctx, {
 
 .list-group-item:last-child {
     border-bottom: none;
+}
+
+.stats-card-profit {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
+
+.stats-card-profit .card-body i,
+.stats-card-profit .card-title,
+.stats-card-profit .card-text {
+    color: white;
+}
+
+.stats-card-cost {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+}
+
+.stats-card-cost .card-body i,
+.stats-card-cost .card-title,
+.stats-card-cost .card-text {
+    color: white;
 }
 </style>
 
