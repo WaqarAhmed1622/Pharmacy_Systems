@@ -261,7 +261,7 @@ for ($i = 29; $i >= 0; $i--) {
                 <i class="fas fa-money-bill-wave fa-2x mb-2"></i>
                 <h4 class="card-title"><?php echo formatCurrency($totalProfit); ?></h4>
                 <p class="card-text">Net Profit</p>
-                <small class="text-muted"><?php echo round($profitMargin, 2); ?>% margin</small>
+                <small class="text-white"><?php echo round($profitMargin, 2); ?>% margin</small>
             </div>
         </div>
     </div>

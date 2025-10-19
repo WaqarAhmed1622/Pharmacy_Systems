@@ -174,7 +174,7 @@ function getProductByBarcode($barcode) {
     $query = "SELECT p.*, c.name as category_name 
               FROM products p 
               LEFT JOIN categories c ON p.category_id = c.id 
-              WHERE p.barcode = ?";
+              WHERE p.barcode = ? AND p.is_active = 1";
     
     $result = executeQuery($query, 's', [$barcode]);
     return $result ? $result[0] : false;
