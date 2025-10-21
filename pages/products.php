@@ -1115,6 +1115,28 @@ document.getElementById('toggleFilters').addEventListener('click', function() {
                                     required
                                 >
                             </div>
+                            <!-- Live Profit Display -->
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-info" id="profitDisplay" style="display: none;">
+            <h6 class="mb-2"><i class="fas fa-chart-line"></i> Profit Analysis</h6>
+            <div class="row text-center">
+                <div class="col-md-4">
+                    <small class="text-muted">Profit per Unit</small>
+                    <h5 class="mb-0" id="profitAmount">Rs 0.00</h5>
+                </div>
+                <div class="col-md-4">
+                    <small class="text-muted">Profit Margin</small>
+                    <h5 class="mb-0" id="profitMargin">0%</h5>
+                </div>
+                <div class="col-md-4">
+                    <small class="text-muted">Potential Profit (Stock)</small>
+                    <h5 class="mb-0" id="totalProfit">Rs 0.00</h5>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
                         </div>
                         <div class="row">
                             <div class="col-md-6 mb-3">
@@ -1224,12 +1246,21 @@ document.getElementById('toggleFilters').addEventListener('click', function() {
                         <li>Set appropriate minimum levels</li>
                         <li>System alerts when stock is low</li>
                     </ul>
-                    <h6>Pricing:</h6>
-                    <ul class="small">
-                        <li>Cost: Your purchase price (Rs)</li>
-                        <li>Price: Customer selling price (Rs)</li>
-                        <li>Margin: Price - Cost (Rs)</li>
-                    </ul>
+                    <h6>Pricing & Profit:</h6>
+<ul class="small">
+    <li>Cost: Your purchase price (Rs)</li>
+    <li>Price: Customer selling price (Rs)</li>
+    <li>Profit: Price - Cost (Rs)</li>
+    <li>Margin %: (Profit / Price) × 100</li>
+</ul>
+<div class="alert alert-info alert-sm p-2">
+    <small>
+        <strong>Margin Guide:</strong><br>
+        🟢 High: 30%+ profit margin<br>
+        🟡 Medium: 15-30% profit margin<br>
+        🔴 Low: Below 15% profit margin
+    </small>
+</div>
                     <?php if (isset($product)): ?>
                         <hr>
                         <h6>Current Product:</h6>
@@ -1297,6 +1328,65 @@ function fillSampleData() {
     document.getElementById('manufacturer').value = 'Sample Manufacturer';
     document.getElementById('description').value = 'Sample product description for testing.';
 }
+
+// Live profit calculation
+function calculateProfit() {
+    const price = parseFloat(document.getElementById('price').value) || 0;
+    const cost = parseFloat(document.getElementById('cost').value) || 0;
+    const stock = parseFloat(document.getElementById('stock_quantity').value) || 0;
+    
+    if (price > 0 && cost >= 0) {
+        const profitPerUnit = price - cost;
+        const profitMargin = (profitPerUnit / price) * 100;
+        const totalPotentialProfit = profitPerUnit * stock;
+        
+        // Show the profit display
+        document.getElementById('profitDisplay').style.display = 'block';
+        
+        // Update values
+        document.getElementById('profitAmount').textContent = 'Rs ' + profitPerUnit.toFixed(2);
+        document.getElementById('profitMargin').textContent = profitMargin.toFixed(1) + '%';
+        document.getElementById('totalProfit').textContent = 'Rs ' + totalPotentialProfit.toFixed(2);
+        
+        // Color code based on margin
+        const marginElement = document.getElementById('profitMargin');
+        if (profitMargin >= 30) {
+            marginElement.className = 'mb-0 text-success';
+        } else if (profitMargin >= 15) {
+            marginElement.className = 'mb-0 text-warning';
+        } else if (profitMargin >= 0) {
+            marginElement.className = 'mb-0 text-danger';
+        } else {
+            marginElement.className = 'mb-0 text-danger';
+        }
+        
+        // Color code profit amount
+        const amountElement = document.getElementById('profitAmount');
+        if (profitPerUnit >= 0) {
+            amountElement.className = 'mb-0 text-success';
+        } else {
+            amountElement.className = 'mb-0 text-danger';
+        }
+    } else {
+        document.getElementById('profitDisplay').style.display = 'none';
+    }
+}
+
+// Add event listeners for real-time calculation
+document.addEventListener('DOMContentLoaded', function() {
+    const priceInput = document.getElementById('price');
+    const costInput = document.getElementById('cost');
+    const stockInput = document.getElementById('stock_quantity');
+    
+    if (priceInput && costInput) {
+        priceInput.addEventListener('input', calculateProfit);
+        costInput.addEventListener('input', calculateProfit);
+        stockInput.addEventListener('input', calculateProfit);
+        
+        // Calculate on page load if editing
+        calculateProfit();
+    }
+});
     </script>
 <?php endif; ?>
 
