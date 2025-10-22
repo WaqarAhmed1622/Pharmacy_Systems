@@ -6,106 +6,20 @@
 
 require_once '../config/database.php';
 require_once '../includes/export.php';
-
-function getSalesData($period, $start = null, $end = null) {
-    $whereClause = '';
-    $params = [];
-    
-    switch ($period) {
-        case 'today':
-            $whereClause = "WHERE DATE(order_date) = CURDATE() AND status != 'returned'";
-            break;
-        case 'yesterday':
-            $whereClause = "WHERE DATE(order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND status != 'returned'";
-            break;
-        case 'week':
-            $whereClause = "WHERE YEARWEEK(order_date) = YEARWEEK(CURDATE()) AND status != 'returned'";
-            break;
-        case 'month':
-            $whereClause = "WHERE MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE()) AND status != 'returned'";
-            break;
-        case 'year':
-            $whereClause = "WHERE YEAR(order_date) = YEAR(CURDATE()) AND status != 'returned'";
-            break;
-        case 'custom':
-            if ($start && $end) {
-                $whereClause = "WHERE DATE(order_date) BETWEEN ? AND ? AND status != 'returned'";
-                $params = [$start, $end];
-            }
-            break;
-    }
-    
-    $query = "SELECT 
-                COUNT(*) as total_orders,
-                COALESCE(SUM(total_amount), 0) as total_sales,
-                COALESCE(AVG(total_amount), 0) as avg_order_value,
-                COALESCE(SUM(subtotal), 0) as total_subtotal,
-                COALESCE(SUM(tax_amount), 0) as total_tax
-              FROM orders $whereClause";
-    
-    $result = executeQuery($query, str_repeat('s', count($params)), $params);
-    return $result ? $result[0] : ['total_orders' => 0, 'total_sales' => 0, 'avg_order_value' => 0, 'total_subtotal' => 0, 'total_tax' => 0];
-}
-
-// Get top products for the period
-function getTopProducts($period, $start = null, $end = null, $limit = 10) {
-    $whereClause = '';
-    $params = [];
-    
-    switch ($period) {
-        case 'today':
-            $whereClause = "WHERE DATE(o.order_date) = CURDATE() AND o.status != 'returned'";
-            break;
-        case 'yesterday':
-            $whereClause = "WHERE DATE(o.order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND o.status != 'returned'";
-            break;
-        case 'week':
-            $whereClause = "WHERE YEARWEEK(o.order_date) = YEARWEEK(CURDATE()) AND o.status != 'returned'";
-            break;
-        case 'month':
-            $whereClause = "WHERE MONTH(o.order_date) = MONTH(CURDATE()) AND YEAR(o.order_date) = YEAR(CURDATE()) AND o.status != 'returned'";
-            break;
-        case 'year':
-            $whereClause = "WHERE YEAR(o.order_date) = YEAR(CURDATE()) AND o.status != 'returned'";
-            break;
-        case 'custom':
-            if ($start && $end) {
-                $whereClause = "WHERE DATE(o.order_date) BETWEEN ? AND ? AND o.status != 'returned'";
-                $params = [$start, $end];
-            }
-            break;
-    }
-    
-    $query = "SELECT 
-                p.name,
-                p.barcode,
-                SUM(oi.quantity) as total_sold,
-                SUM(oi.total_price) as total_revenue,
-                AVG(oi.unit_price) as avg_price
-              FROM order_items oi
-              JOIN products p ON oi.product_id = p.id
-              JOIN orders o ON oi.order_id = o.id
-              $whereClause
-              GROUP BY p.id, p.name, p.barcode
-              ORDER BY total_sold DESC
-              LIMIT $limit";
-    
-    return executeQuery($query, str_repeat('s', count($params)), $params);
-}
+require_once '../includes/functions.php';
 
 $period = isset($_GET['period']) ? $_GET['period'] : 'today';
 $customStart = isset($_GET['start']) ? $_GET['start'] : date('Y-m-d');
 $customEnd = isset($_GET['end']) ? $_GET['end'] : date('Y-m-d');
 
-
 // Handle export
 if (isset($_GET['export'])) {
     exportSalesReportToCSV($period, $customStart, $customEnd);
+    exit();
 }
 
 require_once '../includes/header.php';
 requireAdmin();
-
 
 $salesData = getSalesData($period, $customStart, $customEnd);
 $topProducts = getTopProducts($period, $customStart, $customEnd);
@@ -156,7 +70,7 @@ for ($i = 29; $i >= 0; $i--) {
     $date = date('Y-m-d', strtotime("-$i days"));
     $dateLabel = date('M j', strtotime("-$i days"));
     
-    $dayStats = executeQuery("SELECT COALESCE(SUM(total_amount), 0) as sales FROM orders WHERE DATE(order_date) = ?", 's', [$date]);
+    $dayStats = executeQuery("SELECT COALESCE(SUM(total_amount), 0) as sales FROM orders WHERE DATE(order_date) = ? AND status != 'returned'", 's', [$date]);
     $salesAmount = $dayStats ? $dayStats[0]['sales'] : 0;
     
     $chartData[] = $salesAmount;
@@ -164,7 +78,6 @@ for ($i = 29; $i >= 0; $i--) {
 }
 ?>
 
-<!-- Period Selection -->
 <!-- Period Selection -->
 <div class="row mb-4">
     <div class="col-12">
@@ -178,10 +91,10 @@ for ($i = 29; $i >= 0; $i--) {
                 </a>
             </div>
             <div class="card-body">
-                <form method="GET" class="row g-3">
-                    <div class="col-md-3">
+                <form method="GET" id="reportForm" class="row g-3">
+                    <div class="col-md-4">
                         <label class="form-label">Report Period</label>
-                        <select name="period" class="form-select" onchange="toggleCustomDates(this.value)">
+                        <select name="period" id="period" class="form-select">
                             <option value="today" <?php echo $period == 'today' ? 'selected' : ''; ?>>Today</option>
                             <option value="yesterday" <?php echo $period == 'yesterday' ? 'selected' : ''; ?>>Yesterday</option>
                             <option value="week" <?php echo $period == 'week' ? 'selected' : ''; ?>>This Week</option>
@@ -191,28 +104,37 @@ for ($i = 29; $i >= 0; $i--) {
                         </select>
                     </div>
                     
-                    <div class="col-md-3" id="startDate" style="display: <?php echo $period == 'custom' ? 'block' : 'none'; ?>">
+                    <div class="col-md-3" id="customDateRange" style="display: <?php echo $period == 'custom' ? 'block' : 'none'; ?>">
                         <label class="form-label">Start Date</label>
-                        <input type="date" name="start" class="form-control" value="<?php echo $customStart; ?>">
+                        <input type="date" name="start" id="start_date" class="form-control" value="<?php echo $customStart; ?>">
                     </div>
                     
-                    <div class="col-md-3" id="endDate" style="display: <?php echo $period == 'custom' ? 'block' : 'none'; ?>">
+                    <div class="col-md-3" id="customDateRangeEnd" style="display: <?php echo $period == 'custom' ? 'block' : 'none'; ?>">
                         <label class="form-label">End Date</label>
-                        <input type="date" name="end" class="form-control" value="<?php echo $customEnd; ?>">
+                        <input type="date" name="end" id="end_date" class="form-control" value="<?php echo $customEnd; ?>">
                     </div>
                     
-                    <div class="col-md-3 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-search"></i> Generate Report
+                    <?php if ($period == 'custom'): ?>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-search"></i> Apply
                         </button>
                     </div>
+                    <?php endif; ?>
+                    
+                    <?php if ($period != 'today'): ?>
+                    <div class="col-md-12">
+                        <a href="sales_reports.php" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-times"></i> Clear Filters
+                        </a>
+                    </div>
+                    <?php endif; ?>
                 </form>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Sales Statistics -->
 <!-- Sales Statistics -->
 <div class="row mb-4">
     <div class="col-md-3 mb-3">
@@ -342,23 +264,23 @@ for ($i = 29; $i >= 0; $i--) {
                 
                 switch ($period) {
                     case 'today':
-                        $whereClause = "WHERE DATE(order_date) = CURDATE()";
+                        $whereClause = "WHERE DATE(order_date) = CURDATE() AND status != 'returned'";
                         break;
                     case 'yesterday':
-                        $whereClause = "WHERE DATE(order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)";
+                        $whereClause = "WHERE DATE(order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND status != 'returned'";
                         break;
                     case 'week':
-                        $whereClause = "WHERE YEARWEEK(order_date) = YEARWEEK(CURDATE())";
+                        $whereClause = "WHERE YEARWEEK(order_date) = YEARWEEK(CURDATE()) AND status != 'returned'";
                         break;
                     case 'month':
-                        $whereClause = "WHERE MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE())";
+                        $whereClause = "WHERE MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE()) AND status != 'returned'";
                         break;
                     case 'year':
-                        $whereClause = "WHERE YEAR(order_date) = YEAR(CURDATE())";
+                        $whereClause = "WHERE YEAR(order_date) = YEAR(CURDATE()) AND status != 'returned'";
                         break;
                     case 'custom':
                         if ($customStart && $customEnd) {
-                            $whereClause = "WHERE DATE(order_date) BETWEEN ? AND ?";
+                            $whereClause = "WHERE DATE(order_date) BETWEEN ? AND ? AND status != 'returned'";
                             $params = [$customStart, $customEnd];
                         }
                         break;
@@ -450,7 +372,34 @@ for ($i = 29; $i >= 0; $i--) {
                         <h6 class="text-muted">Items Sold</h6>
                         <strong>
                             <?php 
-                            $itemsQuery = "SELECT SUM(oi.quantity) as total_items
+                            $whereClause = '';
+                            $params = [];
+                            
+                            switch ($period) {
+                                case 'today':
+                                    $whereClause = "WHERE DATE(o.order_date) = CURDATE() AND o.status != 'returned'";
+                                    break;
+                                case 'yesterday':
+                                    $whereClause = "WHERE DATE(o.order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND o.status != 'returned'";
+                                    break;
+                                case 'week':
+                                    $whereClause = "WHERE YEARWEEK(o.order_date) = YEARWEEK(CURDATE()) AND o.status != 'returned'";
+                                    break;
+                                case 'month':
+                                    $whereClause = "WHERE MONTH(o.order_date) = MONTH(CURDATE()) AND YEAR(o.order_date) = YEAR(CURDATE()) AND o.status != 'returned'";
+                                    break;
+                                case 'year':
+                                    $whereClause = "WHERE YEAR(o.order_date) = YEAR(CURDATE()) AND o.status != 'returned'";
+                                    break;
+                                case 'custom':
+                                    if ($customStart && $customEnd) {
+                                        $whereClause = "WHERE DATE(o.order_date) BETWEEN ? AND ? AND o.status != 'returned'";
+                                        $params = [$customStart, $customEnd];
+                                    }
+                                    break;
+                            }
+                            
+                            $itemsQuery = "SELECT COALESCE(SUM(oi.quantity), 0) as total_items
                                           FROM order_items oi
                                           JOIN orders o ON oi.order_id = o.id
                                           $whereClause";
@@ -466,54 +415,77 @@ for ($i = 29; $i >= 0; $i--) {
 </div>
 
 <script>
-// Toggle custom date fields
-function toggleCustomDates(period) {
-    const startDate = document.getElementById('startDate');
-    const endDate = document.getElementById('endDate');
-    
-    if (period === 'custom') {
-        startDate.style.display = 'block';
-        endDate.style.display = 'block';
-    } else {
-        startDate.style.display = 'none';
-        endDate.style.display = 'none';
-    }
+// Dynamic filtering - trigger on period change
+const periodSelect = document.getElementById('period');
+if (periodSelect) {
+    periodSelect.addEventListener('change', function() {
+        const customDateRange = document.getElementById('customDateRange');
+        const customDateRangeEnd = document.getElementById('customDateRangeEnd');
+        
+        if (this.value === 'custom') {
+            // Show custom date inputs
+            if (customDateRange) customDateRange.style.display = 'block';
+            if (customDateRangeEnd) customDateRangeEnd.style.display = 'block';
+        } else {
+            // Hide custom date inputs and auto-submit
+            if (customDateRange) customDateRange.style.display = 'none';
+            if (customDateRangeEnd) customDateRangeEnd.style.display = 'none';
+            // Auto-submit the form
+            document.getElementById('reportForm').submit();
+        }
+    });
+}
+
+// For custom range, submit when end date is selected
+const endDateInput = document.getElementById('end_date');
+if (endDateInput) {
+    endDateInput.addEventListener('change', function() {
+        const startDate = document.getElementById('start_date').value;
+        const endDate = this.value;
+        
+        if (startDate && endDate) {
+            document.getElementById('reportForm').submit();
+        }
+    });
 }
 
 // Create sales chart
-const ctx = document.getElementById('salesChart').getContext('2d');
-new Chart(ctx, {
-    type: 'line',
-    data: {
-        labels: <?php echo json_encode($chartLabels); ?>,
-        datasets: [{
-            label: 'Daily Sales ($)',
-            data: <?php echo json_encode($chartData); ?>,
-            borderColor: 'rgb(102, 126, 234)',
-            backgroundColor: 'rgba(102, 126, 234, 0.1)',
-            tension: 0.4,
-            fill: true
-        }]
-    },
-    options: {
-        responsive: true,
-        plugins: {
-            legend: {
-                display: true
-            }
+const ctx = document.getElementById('salesChart');
+if (ctx) {
+    new Chart(ctx.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: <?php echo json_encode($chartLabels); ?>,
+            datasets: [{
+                label: 'Daily Sales ($)',
+                data: <?php echo json_encode($chartData); ?>,
+                borderColor: 'rgb(102, 126, 234)',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
         },
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    callback: function(value) {
-                        return '$' + value.toFixed(2);
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: true
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toFixed(2);
+                        }
                     }
                 }
             }
         }
-    }
-});
+    });
+}
+</script>
 
 /* Additional icon styles */
 .fa-percentage::before { content: "%"; }

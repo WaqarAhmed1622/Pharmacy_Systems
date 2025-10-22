@@ -1,19 +1,73 @@
 <?php
 /**
  * Export Functions
- * Add this to a new file: includes/export.php
+ * Updated version with better date range display for all periods
+ * File: includes/export.php
  */
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/functions.php';
 
-function exportOrdersToCSV($search = '', $format = 'csv') {
-    $whereClause = "";
+
+function exportOrdersToCSV($search = '', $period = 'all', $start = null, $end = null) {
+    // Build search and period query
+    $whereConditions = [];
     $searchParams = [];
     $searchTypes = "";
-    
+
+    // Add search condition
     if (!empty($search)) {
-        $whereClause = "WHERE (o.order_number LIKE ? OR u.full_name LIKE ?)";
-        $searchParams = ["%$search%", "%$search%"];
-        $searchTypes = "ss";
+        $whereConditions[] = "(o.order_number LIKE ? OR u.full_name LIKE ?)";
+        $searchParams[] = "%$search%";
+        $searchParams[] = "%$search%";
+        $searchTypes .= "ss";
     }
+
+    // Add period condition with actual date ranges
+    switch ($period) {
+        case 'today':
+            $whereConditions[] = "DATE(o.order_date) = CURDATE()";
+            $dateRangeStart = date('Y-m-d');
+            $dateRangeEnd = date('Y-m-d');
+            break;
+        case 'yesterday':
+            $whereConditions[] = "DATE(o.order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)";
+            $dateRangeStart = date('Y-m-d', strtotime('-1 day'));
+            $dateRangeEnd = date('Y-m-d', strtotime('-1 day'));
+            break;
+        case 'week':
+            $whereConditions[] = "YEARWEEK(o.order_date, 1) = YEARWEEK(CURDATE(), 1)";
+            $dateRangeStart = date('Y-m-d', strtotime('monday this week'));
+            $dateRangeEnd = date('Y-m-d', strtotime('sunday this week'));
+            break;
+        case 'month':
+            $whereConditions[] = "MONTH(o.order_date) = MONTH(CURDATE()) AND YEAR(o.order_date) = YEAR(CURDATE())";
+            $dateRangeStart = date('Y-m-01');
+            $dateRangeEnd = date('Y-m-t');
+            break;
+        case 'year':
+            $whereConditions[] = "YEAR(o.order_date) = YEAR(CURDATE())";
+            $dateRangeStart = date('Y-01-01');
+            $dateRangeEnd = date('Y-12-31');
+            break;
+        case 'custom':
+            if ($start && $end) {
+                $whereConditions[] = "DATE(o.order_date) BETWEEN ? AND ?";
+                $searchParams[] = $start;
+                $searchParams[] = $end;
+                $searchTypes .= "ss";
+                $dateRangeStart = $start;
+                $dateRangeEnd = $end;
+            }
+            break;
+        case 'all':
+        default:
+            // No date filter
+            $dateRangeStart = null;
+            $dateRangeEnd = null;
+            break;
+    }
+
+    $whereClause = !empty($whereConditions) ? "WHERE " . implode(" AND ", $whereConditions) : "";
     
     $query = "SELECT o.*, u.full_name as cashier_name 
               FROM orders o 
@@ -23,51 +77,283 @@ function exportOrdersToCSV($search = '', $format = 'csv') {
     
     $orders = executeQuery($query, $searchTypes, $searchParams);
     
-    $filename = 'orders_' . date('Y-m-d_H-i-s') . '.csv';
+    // Generate period description for filename
+    $periodDesc = '';
+    switch($period) {
+        case 'today': 
+            $periodDesc = 'Today_' . date('d-m-Y'); 
+            break;
+        case 'yesterday': 
+            $periodDesc = 'Yesterday_' . date('d-m-Y', strtotime('-1 day')); 
+            break;
+        case 'week': 
+            $periodDesc = 'Week_' . date('d-m-Y'); 
+            break;
+        case 'month': 
+            $periodDesc = 'Month_' . date('F_Y'); 
+            break;
+        case 'year': 
+            $periodDesc = 'Year_' . date('Y'); 
+            break;
+        case 'custom': 
+            $periodDesc = date('d-m-Y', strtotime($start)) . '_to_' . date('d-m-Y', strtotime($end)); 
+            break;
+        default: 
+            $periodDesc = 'All_Time'; 
+            break;
+    }
     
+    // Set headers for file download
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Content-Disposition: attachment; filename=Orders_Report_' . $periodDesc . '.csv');
     
+    // Create file pointer
     $output = fopen('php://output', 'w');
     
-    // Add BOM for Excel UTF-8 compatibility
-    fwrite($output, "\xEF\xBB\xBF");
+    // Add BOM for UTF-8
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
     
-    // Header row
+    // Add report header
+    fputcsv($output, ['Orders Report']);
+    
+    // Add period information with date range
+    $periodLabel = '';
+    switch($period) {
+        case 'today': 
+            $periodLabel = 'Period: Today (' . date('d/m/Y', strtotime($dateRangeStart)) . ')'; 
+            break;
+        case 'yesterday': 
+            $periodLabel = 'Period: Yesterday (' . date('d/m/Y', strtotime($dateRangeStart)) . ')'; 
+            break;
+        case 'week': 
+            $periodLabel = 'Period: This Week (' . date('d/m/Y', strtotime($dateRangeStart)) . ' to ' . date('d/m/Y', strtotime($dateRangeEnd)) . ')'; 
+            break;
+        case 'month': 
+            $periodLabel = 'Period: ' . date('F Y') . ' (' . date('d/m/Y', strtotime($dateRangeStart)) . ' to ' . date('d/m/Y', strtotime($dateRangeEnd)) . ')'; 
+            break;
+        case 'year': 
+            $periodLabel = 'Period: Year ' . date('Y') . ' (' . date('d/m/Y', strtotime($dateRangeStart)) . ' to ' . date('d/m/Y', strtotime($dateRangeEnd)) . ')'; 
+            break;
+        case 'custom': 
+            $periodLabel = 'Period: Custom Range (' . date('d/m/Y', strtotime($start)) . ' to ' . date('d/m/Y', strtotime($end)) . ')'; 
+            break;
+        default: 
+            $periodLabel = 'Period: All Time'; 
+            break;
+    }
+    
+    fputcsv($output, [$periodLabel]);
+    fputcsv($output, ['Generated: ' . date('d/m/Y H:i:s')]);
+    fputcsv($output, []); // Empty row
+    
+    // Column headers
     fputcsv($output, [
         'Order Number',
-        'Order Date',
-        'Cashier Name',
+        'Date',
+        'Cashier',
         'Subtotal',
-        'Discount Amount',
-        'Tax Amount',
+        'Discount',
+        'Tax',
         'Total Amount',
         'Payment Method',
-        'Status',
-        'Refund Amount'
+        'Status'
     ]);
     
     // Data rows
     foreach ($orders as $order) {
         fputcsv($output, [
             $order['order_number'],
-            $order['order_date'],
+            date('d/m/Y H:i', strtotime($order['order_date'])),
             $order['cashier_name'],
-            $order['subtotal'],
-            $order['discount_amount'] ?? 0,
-            $order['tax_amount'],
-            $order['total_amount'],
+            number_format($order['subtotal'], 2),
+            number_format($order['discount_amount'] ?? 0, 2),
+            number_format($order['tax_amount'], 2),
+            number_format($order['total_amount'], 2),
             ucfirst($order['payment_method']),
-            ucfirst($order['status']),
-            $order['refund_amount'] ?? 0
+            ucfirst($order['status'])
+        ]);
+    }
+    
+    // Add summary at the end
+    fputcsv($output, []); // Empty row
+    fputcsv($output, ['Summary']);
+    fputcsv($output, ['Total Orders', count($orders)]);
+    
+    $totalSales = array_sum(array_column($orders, 'total_amount'));
+    fputcsv($output, ['Total Sales', number_format($totalSales, 2)]);
+    
+    fclose($output);
+    exit();
+}
+
+function exportSalesReportToCSV($period, $start = null, $end = null) {
+    // Get sales data using the same logic as reports.php
+    $salesData = getSalesData($period, $start, $end);
+    
+    // Calculate date ranges for all periods
+    switch($period) {
+        case 'today':
+            $dateRangeStart = date('Y-m-d');
+            $dateRangeEnd = date('Y-m-d');
+            break;
+        case 'yesterday':
+            $dateRangeStart = date('Y-m-d', strtotime('-1 day'));
+            $dateRangeEnd = date('Y-m-d', strtotime('-1 day'));
+            break;
+        case 'week':
+            $dateRangeStart = date('Y-m-d', strtotime('monday this week'));
+            $dateRangeEnd = date('Y-m-d', strtotime('sunday this week'));
+            break;
+        case 'month':
+            $dateRangeStart = date('Y-m-01');
+            $dateRangeEnd = date('Y-m-t');
+            break;
+        case 'year':
+            $dateRangeStart = date('Y-01-01');
+            $dateRangeEnd = date('Y-12-31');
+            break;
+        case 'custom':
+            $dateRangeStart = $start;
+            $dateRangeEnd = $end;
+            break;
+        default:
+            $dateRangeStart = null;
+            $dateRangeEnd = null;
+            break;
+    }
+    
+    // Generate period description
+    $periodDesc = '';
+    switch($period) {
+        case 'today': 
+            $periodDesc = 'Today_' . date('d-m-Y'); 
+            break;
+        case 'yesterday': 
+            $periodDesc = 'Yesterday_' . date('d-m-Y', strtotime('-1 day')); 
+            break;
+        case 'week': 
+            $periodDesc = 'Week_' . date('d-m-Y'); 
+            break;
+        case 'month': 
+            $periodDesc = 'Month_' . date('F_Y'); 
+            break;
+        case 'year': 
+            $periodDesc = 'Year_' . date('Y'); 
+            break;
+        case 'custom': 
+            $periodDesc = date('d-m-Y', strtotime($start)) . '_to_' . date('d-m-Y', strtotime($end)); 
+            break;
+    }
+    
+    // Set headers
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=Sales_Report_' . $periodDesc . '.csv');
+    
+    $output = fopen('php://output', 'w');
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+    
+    // Report header
+    fputcsv($output, ['Sales Report']);
+    
+    // Period information with date range
+    $periodLabel = '';
+    switch($period) {
+        case 'today': 
+            $periodLabel = 'Period: Today (' . date('d/m/Y', strtotime($dateRangeStart)) . ')'; 
+            break;
+        case 'yesterday': 
+            $periodLabel = 'Period: Yesterday (' . date('d/m/Y', strtotime($dateRangeStart)) . ')'; 
+            break;
+        case 'week': 
+            $periodLabel = 'Period: This Week (' . date('d/m/Y', strtotime($dateRangeStart)) . ' to ' . date('d/m/Y', strtotime($dateRangeEnd)) . ')'; 
+            break;
+        case 'month': 
+            $periodLabel = 'Period: ' . date('F Y') . ' (' . date('d/m/Y', strtotime($dateRangeStart)) . ' to ' . date('d/m/Y', strtotime($dateRangeEnd)) . ')'; 
+            break;
+        case 'year': 
+            $periodLabel = 'Period: Year ' . date('Y') . ' (' . date('d/m/Y', strtotime($dateRangeStart)) . ' to ' . date('d/m/Y', strtotime($dateRangeEnd)) . ')'; 
+            break;
+        case 'custom': 
+            $periodLabel = 'Period: Custom Range (' . date('d/m/Y', strtotime($start)) . ' to ' . date('d/m/Y', strtotime($end)) . ')'; 
+            break;
+        default: 
+            $periodLabel = 'Period: All Time'; 
+            break;
+    }
+    
+    fputcsv($output, [$periodLabel]);
+    fputcsv($output, ['Generated: ' . date('d/m/Y H:i:s')]);
+    fputcsv($output, []);
+    
+    // Sales Summary
+    fputcsv($output, ['Sales Summary']);
+    fputcsv($output, ['Metric', 'Value']);
+    fputcsv($output, ['Total Orders', $salesData['total_orders']]);
+    fputcsv($output, ['Total Sales', number_format($salesData['total_sales'], 2)]);
+    fputcsv($output, ['Average Order Value', number_format($salesData['avg_order_value'], 2)]);
+    fputcsv($output, ['Total Tax', number_format($salesData['total_tax'], 2)]);
+    
+    fputcsv($output, []);
+    
+    // Top Products
+    $topProducts = getTopProducts($period, $start, $end, 10);
+    fputcsv($output, ['Top Products']);
+    fputcsv($output, ['Product Name', 'Barcode', 'Quantity Sold', 'Total Revenue']);
+    
+    foreach ($topProducts as $product) {
+        fputcsv($output, [
+            $product['name'],
+            $product['barcode'],
+            $product['total_sold'],
+            number_format($product['total_revenue'], 2)
         ]);
     }
     
     fclose($output);
-    exit;
+    exit();
 }
 
-function exportSalesReportToCSV($period, $customStart = null, $customEnd = null) {
+function getSalesData($period, $start = null, $end = null) {
+    $whereClause = '';
+    $params = [];
+    
+    switch ($period) {
+        case 'today':
+            $whereClause = "WHERE DATE(order_date) = CURDATE() AND status != 'returned'";
+            break;
+        case 'yesterday':
+            $whereClause = "WHERE DATE(order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND status != 'returned'";
+            break;
+        case 'week':
+            $whereClause = "WHERE YEARWEEK(order_date) = YEARWEEK(CURDATE()) AND status != 'returned'";
+            break;
+        case 'month':
+            $whereClause = "WHERE MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE()) AND status != 'returned'";
+            break;
+        case 'year':
+            $whereClause = "WHERE YEAR(order_date) = YEAR(CURDATE()) AND status != 'returned'";
+            break;
+        case 'custom':
+            if ($start && $end) {
+                $whereClause = "WHERE DATE(order_date) BETWEEN ? AND ? AND status != 'returned'";
+                $params = [$start, $end];
+            }
+            break;
+    }
+    
+    $query = "SELECT 
+                COUNT(*) as total_orders,
+                COALESCE(SUM(total_amount), 0) as total_sales,
+                COALESCE(AVG(total_amount), 0) as avg_order_value,
+                COALESCE(SUM(subtotal), 0) as total_subtotal,
+                COALESCE(SUM(tax_amount), 0) as total_tax
+              FROM orders $whereClause";
+    
+    $result = executeQuery($query, str_repeat('s', count($params)), $params);
+    return $result ? $result[0] : ['total_orders' => 0, 'total_sales' => 0, 'avg_order_value' => 0, 'total_subtotal' => 0, 'total_tax' => 0];
+}
+
+function getTopProducts($period, $start = null, $end = null, $limit = 10) {
     $whereClause = '';
     $params = [];
     
@@ -88,111 +374,27 @@ function exportSalesReportToCSV($period, $customStart = null, $customEnd = null)
             $whereClause = "WHERE YEAR(o.order_date) = YEAR(CURDATE()) AND o.status != 'returned'";
             break;
         case 'custom':
-            if ($customStart && $customEnd) {
+            if ($start && $end) {
                 $whereClause = "WHERE DATE(o.order_date) BETWEEN ? AND ? AND o.status != 'returned'";
-                $params = [$customStart, $customEnd];
+                $params = [$start, $end];
             }
             break;
     }
     
-    // Get sales summary with cost calculation
-    $summaryQuery = "SELECT 
-                        COUNT(*) as total_orders,
-                        COALESCE(SUM(o.total_amount), 0) as total_sales,
-                        COALESCE(AVG(o.total_amount), 0) as avg_order_value,
-                        COALESCE(SUM(o.subtotal), 0) as total_subtotal,
-                        COALESCE(SUM(o.tax_amount), 0) as total_tax,
-                        COALESCE(SUM(oi.quantity * p.cost), 0) as total_cost
-                    FROM orders o 
-                    LEFT JOIN order_items oi ON o.id = oi.order_id
-                    LEFT JOIN products p ON oi.product_id = p.id
-                    $whereClause";
+    $query = "SELECT 
+                p.name,
+                p.barcode,
+                SUM(oi.quantity) as total_sold,
+                SUM(oi.total_price) as total_revenue,
+                AVG(oi.unit_price) as avg_price
+              FROM order_items oi
+              JOIN products p ON oi.product_id = p.id
+              JOIN orders o ON oi.order_id = o.id
+              $whereClause
+              GROUP BY p.id, p.name, p.barcode
+              ORDER BY total_sold DESC
+              LIMIT $limit";
     
-    $summaryResult = executeQuery($summaryQuery, str_repeat('s', count($params)), $params);
-    $summary = $summaryResult ? $summaryResult[0] : null;
-    
-    // Get top products
-    $productQuery = "SELECT 
-                        p.name,
-                        p.barcode,
-                        SUM(oi.quantity) as total_sold,
-                        SUM(oi.total_price) as total_revenue,
-                        AVG(oi.unit_price) as avg_price
-                    FROM order_items oi
-                    JOIN products p ON oi.product_id = p.id
-                    JOIN orders o ON oi.order_id = o.id
-                    $whereClause
-                    GROUP BY p.id, p.name, p.barcode
-                    ORDER BY total_sold DESC
-                    LIMIT 20";
-    
-    $topProducts = executeQuery($productQuery, str_repeat('s', count($params)), $params);
-    
-    // Get payment methods
-    $paymentQuery = "SELECT 
-                        payment_method,
-                        COUNT(*) as count,
-                        SUM(total_amount) as total
-                    FROM orders o
-                    $whereClause
-                    GROUP BY payment_method
-                    ORDER BY total DESC";
-    
-    $paymentMethods = executeQuery($paymentQuery, str_repeat('s', count($params)), $params);
-    
-    $filename = 'sales_report_' . date('Y-m-d_H-i-s') . '.csv';
-    
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    
-    $output = fopen('php://output', 'w');
-    fwrite($output, "\xEF\xBB\xBF");
-    
-    // Sales Summary Section
-    fputcsv($output, ['SALES REPORT']);
-    fputcsv($output, ['Generated', date('Y-m-d H:i:s')]);
-    fputcsv($output, ['Period', ucfirst($period)]);
-    fputcsv($output, []);
-    
-    fputcsv($output, ['SUMMARY']);
-    fputcsv($output, ['Metric', 'Value']);
-    fputcsv($output, ['Total Sales', $summary['total_sales']]);
-    fputcsv($output, ['Total Cost', $summary['total_cost']]);
-    $profit = $summary['total_sales'] - $summary['total_cost'];
-    $profitMargin = $summary['total_sales'] > 0 ? (($profit / $summary['total_sales']) * 100) : 0;
-    fputcsv($output, ['Profit', $profit]);
-    fputcsv($output, ['Profit Margin (%)', round($profitMargin, 2) . '%']);
-    fputcsv($output, ['Total Orders', $summary['total_orders']]);
-    fputcsv($output, ['Average Order Value', $summary['avg_order_value']]);
-    fputcsv($output, ['Total Tax', $summary['total_tax']]);
-    fputcsv($output, []);
-    
-    // Payment Methods Section
-    fputcsv($output, ['PAYMENT METHODS']);
-    fputcsv($output, ['Method', 'Orders', 'Total']);
-    foreach ($paymentMethods as $method) {
-        fputcsv($output, [
-            ucfirst($method['payment_method']),
-            $method['count'],
-            $method['total']
-        ]);
-    }
-    fputcsv($output, []);
-    
-    // Top Products Section
-    fputcsv($output, ['TOP PRODUCTS']);
-    fputcsv($output, ['Product Name', 'Barcode', 'Quantity Sold', 'Revenue', 'Avg Price']);
-    foreach ($topProducts as $product) {
-        fputcsv($output, [
-            $product['name'],
-            $product['barcode'],
-            $product['total_sold'],
-            $product['total_revenue'],
-            $product['avg_price']
-        ]);
-    }
-    
-    fclose($output);
-    exit;
+    return executeQuery($query, str_repeat('s', count($params)), $params);
 }
 ?>
