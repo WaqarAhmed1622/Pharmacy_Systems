@@ -6,10 +6,16 @@ require_once '../includes/functions.php';
 require_once '../includes/export.php';
 
 $search = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
+$period = isset($_GET['period']) ? $_GET['period'] : 'all';
+$customStart = isset($_GET['start']) ? $_GET['start'] : date('Y-m-d');
+$customEnd = isset($_GET['end']) ? $_GET['end'] : date('Y-m-d');
 
 if (isset($_GET['export'])) {
     $exportSearch = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
-    exportOrdersToCSV($exportSearch);
+    $exportPeriod = isset($_GET['period']) ? $_GET['period'] : 'all';
+    $exportStart = isset($_GET['start']) ? $_GET['start'] : date('Y-m-d');
+    $exportEnd = isset($_GET['end']) ? $_GET['end'] : date('Y-m-d');
+    exportOrdersToCSV($exportSearch, $exportPeriod, $exportStart, $exportEnd);
 }
 // Handle order status update (add this after the search params section, before the queries)
 ob_start();
@@ -63,15 +69,51 @@ $limit = 20;
 $offset = ($page - 1) * $limit;
 
 // Build search query
-$whereClause = "";
+// Build search and period query
+$whereConditions = [];
 $searchParams = [];
 $searchTypes = "";
 
+// Add search condition
 if (!empty($search)) {
-    $whereClause = "WHERE (o.order_number LIKE ? OR u.full_name LIKE ?)";
-    $searchParams = ["%$search%", "%$search%"];
-    $searchTypes = "ss";
+    $whereConditions[] = "(o.order_number LIKE ? OR u.full_name LIKE ?)";
+    $searchParams[] = "%$search%";
+    $searchParams[] = "%$search%";
+    $searchTypes .= "ss";
 }
+
+// Add period condition
+switch ($period) {
+    case 'today':
+        $whereConditions[] = "DATE(o.order_date) = CURDATE()";
+        break;
+    case 'yesterday':
+        $whereConditions[] = "DATE(o.order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)";
+        break;
+    case 'week':
+        $whereConditions[] = "YEARWEEK(o.order_date) = YEARWEEK(CURDATE())";
+        break;
+    case 'month':
+        $whereConditions[] = "MONTH(o.order_date) = MONTH(CURDATE()) AND YEAR(o.order_date) = YEAR(CURDATE())";
+        break;
+    case 'year':
+        $whereConditions[] = "YEAR(o.order_date) = YEAR(CURDATE())";
+        break;
+    case 'custom':
+        if ($customStart && $customEnd) {
+            $whereConditions[] = "DATE(o.order_date) BETWEEN ? AND ?";
+            $searchParams[] = $customStart;
+            $searchParams[] = $customEnd;
+            $searchTypes .= "ss";
+        }
+        break;
+    case 'all':
+    default:
+        // No date filter
+        break;
+}
+
+$whereClause = !empty($whereConditions) ? "WHERE " . implode(" AND ", $whereConditions) : "";
 
 // Get orders with pagination
 $ordersQuery = "SELECT o.*, u.full_name as cashier_name 
@@ -215,6 +257,20 @@ document.getElementById('statusSelect').addEventListener('change', function() {
         returnWarning.style.display = 'none';
     }
 });
+
+function toggleCustomDates(period) {
+    const startDate = document.getElementById('startDate');
+    const endDate = document.getElementById('endDate');
+    
+    if (period === 'custom') {
+        startDate.style.display = 'block';
+        endDate.style.display = 'block';
+    } else {
+        startDate.style.display = 'none';
+        endDate.style.display = 'none';
+    }
+}
+
 </script>
     <div class="row">
         <div class="col-md-4">
@@ -314,45 +370,76 @@ document.getElementById('statusSelect').addEventListener('change', function() {
     <!-- Orders List View -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h3><i class="fas fa-receipt"></i> Orders History</h3>
-    <a href="?export=1&search=<?php echo urlencode($search); ?>" class="btn btn-success">
+    <a href="?export=1&period=<?php echo $period; ?>&start=<?php echo $customStart; ?>&end=<?php echo $customEnd; ?>&search=<?php echo urlencode($search); ?>" class="btn btn-success">
         <i class="fas fa-download"></i> Export to CSV
     </a>
 </div>
     
     <!-- Search Form -->
-    <div class="card mb-4">
-        <div class="card-body">
-            <form method="GET" class="row g-3">
-                <div class="col-md-8">
-                    <input 
-                        type="text" 
-                        name="search" 
-                        class="form-control" 
-                        placeholder="Search by order number or cashier name..."
-                        value="<?php echo sanitizeInput($search); ?>"
-                    >
+    <!-- Search and Filter Form -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Period</label>
+                <select name="period" class="form-select" onchange="toggleCustomDates(this.value)">
+                    <option value="all" <?php echo $period == 'all' ? 'selected' : ''; ?>>All Time</option>
+                    <option value="today" <?php echo $period == 'today' ? 'selected' : ''; ?>>Today</option>
+                    <option value="yesterday" <?php echo $period == 'yesterday' ? 'selected' : ''; ?>>Yesterday</option>
+                    <option value="week" <?php echo $period == 'week' ? 'selected' : ''; ?>>This Week</option>
+                    <option value="month" <?php echo $period == 'month' ? 'selected' : ''; ?>>This Month</option>
+                    <option value="year" <?php echo $period == 'year' ? 'selected' : ''; ?>>This Year</option>
+                    <option value="custom" <?php echo $period == 'custom' ? 'selected' : ''; ?>>Custom Range</option>
+                </select>
+            </div>
+            
+            <div class="col-md-2" id="startDate" style="display: <?php echo $period == 'custom' ? 'block' : 'none'; ?>">
+                <label class="form-label">Start Date</label>
+                <input type="date" name="start" class="form-control" value="<?php echo $customStart; ?>">
+            </div>
+            
+            <div class="col-md-2" id="endDate" style="display: <?php echo $period == 'custom' ? 'block' : 'none'; ?>">
+                <label class="form-label">End Date</label>
+                <input type="date" name="end" class="form-control" value="<?php echo $customEnd; ?>">
+            </div>
+            
+            <div class="col-md-4">
+                <label class="form-label">Search</label>
+                <input 
+                    type="text" 
+                    name="search" 
+                    class="form-control" 
+                    placeholder="Order number or cashier..."
+                    value="<?php echo sanitizeInput($search); ?>"
+                >
+            </div>
+            
+            <div class="col-md-1 mt-3 d-flex align-items-end">
+    <button type="submit" class="btn btn-primary">
+        <i class="fas fa-filter"></i> Filter
+    </button>
+</div>
+            
+            <?php if ($search || $period != 'all'): ?>
+                <div class="col-md-12">
+                    <a href="orders.php" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-times"></i> Clear Filters
+                    </a>
                 </div>
-                <div class="col-md-4">
-                    <button type="submit" class="btn btn-primary me-2">
-                        <i class="fas fa-search"></i> Search
-                    </button>
-                    <?php if ($search): ?>
-                        <a href="orders.php" class="btn btn-outline-secondary">Clear</a>
-                    <?php endif; ?>
-                </div>
-            </form>
-        </div>
+            <?php endif; ?>
+        </form>
     </div>
+</div>
     
     <!-- Orders Table -->
     <div class="card">
         <div class="card-body">
             <?php if ($search): ?>
-                <p class="text-muted mb-3">
-                    <i class="fas fa-search"></i> Search results for: <strong>"<?php echo sanitizeInput($search); ?>"</strong>
-                    (<?php echo $totalOrders; ?> orders found)
-                </p>
-            <?php endif; ?>
+    <p class="text-muted mb-3">
+        <i class="fas fa-search"></i> Search results for: <strong>"<?php echo sanitizeInput($search); ?>"</strong>
+        (<?php echo $totalOrders; ?> orders found)
+    </p>
+<?php endif; ?>
             
             <div class="table-responsive">
                 <table class="table table-striped">
@@ -432,9 +519,19 @@ document.getElementById('statusSelect').addEventListener('change', function() {
                     <ul class="pagination justify-content-center">
                         <?php if ($page > 1): ?>
                             <li class="page-item">
-                                <a class="page-link" href="?page=<?php echo $page - 1; ?>&search=<?php echo urlencode($search); ?>">
-                                    Previous
-                                </a>
+                                <a class="page-link" href="?page=<?php echo $page - 1; ?>&period=<?php echo $period; ?>&start=<?php echo $customStart; ?>&end=<?php echo $customEnd; ?>&search=<?php echo urlencode($search); ?>">
+    Previous
+</a>
+
+<!-- And for the page numbers -->
+<a class="page-link" href="?page=<?php echo $i; ?>&period=<?php echo $period; ?>&start=<?php echo $customStart; ?>&end=<?php echo $customEnd; ?>&search=<?php echo urlencode($search); ?>">
+    <?php echo $i; ?>
+</a>
+
+<!-- And for Next button -->
+<a class="page-link" href="?page=<?php echo $page + 1; ?>&period=<?php echo $period; ?>&start=<?php echo $customStart; ?>&end=<?php echo $customEnd; ?>&search=<?php echo urlencode($search); ?>">
+    Next
+</a>
                             </li>
                         <?php endif; ?>
                         
