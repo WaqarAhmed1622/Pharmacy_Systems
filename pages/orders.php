@@ -234,44 +234,6 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
             </div>
         </div>
     </div>
-
-    <script>
-// Global function to open status modal from list or details view
-function openStatusModal(orderId, currentStatus) {
-    document.getElementById('modalOrderId').value = orderId;
-    document.getElementById('statusSelect').value = currentStatus;
-    
-    // Hide warning initially
-    document.getElementById('returnWarning').style.display = 'none';
-    
-    const statusModal = new bootstrap.Modal(document.getElementById('statusModal'));
-    statusModal.show();
-}
-
-// Show warning when return is selected
-document.getElementById('statusSelect').addEventListener('change', function() {
-    const returnWarning = document.getElementById('returnWarning');
-    if (this.value === 'returned') {
-        returnWarning.style.display = 'block';
-    } else {
-        returnWarning.style.display = 'none';
-    }
-});
-
-function toggleCustomDates(period) {
-    const startDate = document.getElementById('startDate');
-    const endDate = document.getElementById('endDate');
-    
-    if (period === 'custom') {
-        startDate.style.display = 'block';
-        endDate.style.display = 'block';
-    } else {
-        startDate.style.display = 'none';
-        endDate.style.display = 'none';
-    }
-}
-
-</script>
     <div class="row">
         <div class="col-md-4">
             <div class="card">
@@ -377,12 +339,13 @@ function toggleCustomDates(period) {
     
     <!-- Search Form -->
     <!-- Search and Filter Form -->
+<!-- Search and Filter Form -->
 <div class="card mb-4">
     <div class="card-body">
-        <form method="GET" class="row g-3">
+        <form method="GET" id="filterForm" class="row g-3">
             <div class="col-md-3">
                 <label class="form-label">Period</label>
-                <select name="period" class="form-select" onchange="toggleCustomDates(this.value)">
+                <select name="period" id="period" class="form-select">
                     <option value="all" <?php echo $period == 'all' ? 'selected' : ''; ?>>All Time</option>
                     <option value="today" <?php echo $period == 'today' ? 'selected' : ''; ?>>Today</option>
                     <option value="yesterday" <?php echo $period == 'yesterday' ? 'selected' : ''; ?>>Yesterday</option>
@@ -393,14 +356,14 @@ function toggleCustomDates(period) {
                 </select>
             </div>
             
-            <div class="col-md-2" id="startDate" style="display: <?php echo $period == 'custom' ? 'block' : 'none'; ?>">
+            <div class="col-md-2" id="customDateRange" style="display: <?php echo $period == 'custom' ? 'block' : 'none'; ?>">
                 <label class="form-label">Start Date</label>
-                <input type="date" name="start" class="form-control" value="<?php echo $customStart; ?>">
+                <input type="date" name="start" id="start_date" class="form-control" value="<?php echo $customStart; ?>">
             </div>
             
-            <div class="col-md-2" id="endDate" style="display: <?php echo $period == 'custom' ? 'block' : 'none'; ?>">
+            <div class="col-md-2" id="customDateRangeEnd" style="display: <?php echo $period == 'custom' ? 'block' : 'none'; ?>">
                 <label class="form-label">End Date</label>
-                <input type="date" name="end" class="form-control" value="<?php echo $customEnd; ?>">
+                <input type="date" name="end" id="end_date" class="form-control" value="<?php echo $customEnd; ?>">
             </div>
             
             <div class="col-md-4">
@@ -408,17 +371,12 @@ function toggleCustomDates(period) {
                 <input 
                     type="text" 
                     name="search" 
+                    id="search"
                     class="form-control" 
                     placeholder="Order number or cashier..."
                     value="<?php echo sanitizeInput($search); ?>"
                 >
             </div>
-            
-            <div class="col-md-1 mt-3 d-flex align-items-end">
-    <button type="submit" class="btn btn-primary">
-        <i class="fas fa-filter"></i> Filter
-    </button>
-</div>
             
             <?php if ($search || $period != 'all'): ?>
                 <div class="col-md-12">
@@ -567,6 +525,90 @@ function toggleCustomDates(period) {
         </div>
     </div>
 <?php endif; ?>
+
+<script>
+// This script should work on both order details and order list pages
+
+// Global function to open status modal from list or details view
+function openStatusModal(orderId, currentStatus) {
+    const modalOrderId = document.getElementById('modalOrderId');
+    const statusSelect = document.getElementById('statusSelect');
+    const returnWarning = document.getElementById('returnWarning');
+    
+    if (modalOrderId && statusSelect) {
+        modalOrderId.value = orderId;
+        statusSelect.value = currentStatus;
+        
+        // Hide warning initially
+        if (returnWarning) {
+            returnWarning.style.display = 'none';
+        }
+        
+        const statusModal = new bootstrap.Modal(document.getElementById('statusModal'));
+        statusModal.show();
+    }
+}
+
+// Show warning when return is selected
+const statusSelect = document.getElementById('statusSelect');
+if (statusSelect) {
+    statusSelect.addEventListener('change', function() {
+        const returnWarning = document.getElementById('returnWarning');
+        if (returnWarning) {
+            if (this.value === 'returned') {
+                returnWarning.style.display = 'block';
+            } else {
+                returnWarning.style.display = 'none';
+            }
+        }
+    });
+}
+
+// Dynamic filtering - trigger on period change
+const periodSelect = document.getElementById('period');
+if (periodSelect) {
+    periodSelect.addEventListener('change', function() {
+        const customDateRange = document.getElementById('customDateRange');
+        const customDateRangeEnd = document.getElementById('customDateRangeEnd');
+        
+        if (this.value === 'custom') {
+            // Show custom date inputs
+            if (customDateRange) customDateRange.style.display = 'block';
+            if (customDateRangeEnd) customDateRangeEnd.style.display = 'block';
+        } else {
+            // Hide custom date inputs and auto-submit
+            if (customDateRange) customDateRange.style.display = 'none';
+            if (customDateRangeEnd) customDateRangeEnd.style.display = 'none';
+            document.getElementById('filterForm').submit();
+        }
+    });
+}
+
+// For custom range, submit when end date is selected
+const endDateInput = document.getElementById('end_date');
+if (endDateInput) {
+    endDateInput.addEventListener('change', function() {
+        const startDate = document.getElementById('start_date').value;
+        const endDate = this.value;
+        
+        if (startDate && endDate) {
+            document.getElementById('filterForm').submit();
+        }
+    });
+}
+
+// Optional: Also trigger on search input (with debounce)
+const searchInput = document.getElementById('search');
+if (searchInput) {
+    let searchTimeout;
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            document.getElementById('filterForm').submit();
+        }, 500); // Wait 500ms after user stops typing
+    });
+}
+</script>
 
 <style>
 /* Pagination styles */
