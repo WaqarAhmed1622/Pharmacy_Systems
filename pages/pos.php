@@ -35,6 +35,23 @@ if (isset($_POST['update_price'])) {
     }
 }
 
+// ----------------------
+// Handle item discount updates
+// ----------------------
+if (isset($_POST['update_item_discount'])) {
+    $productId = (int)$_POST['product_id'];
+    $itemDiscount = (float)$_POST['item_discount'];
+
+    if (isset($_SESSION['cart'][$productId])) {
+        if ($itemDiscount >= 0 && $itemDiscount <= 100) {
+            $_SESSION['cart'][$productId]['item_discount'] = $itemDiscount;
+            $success = 'Item discount updated successfully.';
+        } else {
+            $error = 'Invalid discount. Must be between 0 and 100%.';
+        }
+    }
+}
+
 // Handle barcode scan/search
 if (isset($_POST['scan_barcode'])) {
     $barcode = sanitizeInput($_POST['barcode']);
@@ -61,7 +78,9 @@ if (isset($_POST['scan_barcode'])) {
                         'quantity' => 1,
                         'stock_available' => $product['stock_quantity'],
                         'expiry_date' => $product['expiry_date'],
-                        'manufacturer' => $product['manufacturer']
+                        'manufacturer' => $product['manufacturer'],
+                        'item_discount' => 0  // Item discount can be implemented later
+
                     ];
                     $success = 'Product added to cart.';
                 }
@@ -190,8 +209,13 @@ if (isset($_POST['checkout'])) {
 // Calculate cart totals
 $subtotal = 0;
 $totalItems = 0;
+$totalItemDiscounts = 0;
 foreach ($_SESSION['cart'] as $item) {
-    $subtotal += $item['price'] * $item['quantity'];
+    $lineTotal = $item['price'] * $item['quantity'];
+    $itemDiscountPercent = isset($item['item_discount']) ? $item['item_discount'] : 0;
+    $itemDiscountAmount = $lineTotal * ($itemDiscountPercent / 100);
+    $totalItemDiscounts += $itemDiscountAmount;
+    $subtotal += ($lineTotal - $itemDiscountAmount);
     $totalItems += $item['quantity'];
 }
 $discountAmount = calculateDiscount($subtotal);
@@ -253,14 +277,21 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
             <div class="card-body">
                 <div class="row text-center mb-2">
                     <div class="col-6">
-                        <h6 class="text-muted mb-1">Subtotal</h6>
+                        <h6 class="text-muted mb-1">Subtotal (After Item Discounts)</h6>
                         <strong id="display-subtotal"><?php echo formatCurrency($subtotal); ?></strong>
                     </div>
                     <div class="col-6">
-                        <h6 class="text-muted mb-1">Discount (<?php echo number_format($discountRate, 1); ?>%)</h6>
+                        <h6 class="text-muted mb-1">Cart Discount (<?php echo number_format($discountRate, 1); ?>%)</h6>
                         <strong class="text-danger" id="display-discount">-<?php echo formatCurrency($discountAmount); ?></strong>
                     </div>
+                    </div>
+                    <?php if ($totalItemDiscounts > 0): ?>
+                    <div class="row text-center mb-2">
+                        <div class="col-12">
+                            <small class="text-muted">Item Discounts Applied: <span class="text-success">-<?php echo formatCurrency($totalItemDiscounts); ?></span></small>
+                        </div>
                 </div>
+                    <?php endif; ?>
                 <hr>
                 <div class="row text-center mb-2">
                     <div class="col-6">
@@ -316,8 +347,9 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                     <th>Expiry Date</th>
                                     <th>Manufacturer</th>
                                     <th>Price</th>
+                                    <th>Discount %</th>
                                     <th>Quantity</th>
-                                    <th>Total</th>
+                                   <th>Total</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -355,6 +387,26 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                                 <input type="hidden" name="update_price" value="1">
                                             </form>
                                         </td>
+                                        <!-- Item Discount -->
+                                        <td>
+                                            <form method="POST" class="d-inline discount-form">
+                                                <input type="hidden" name="product_id" value="<?php echo $item['id']; ?>">
+                                                <div class="input-group input-group-sm" style="width: 120px;">
+                                                    <input 
+                                                        type="number" 
+                                                        name="item_discount" 
+                                                        value="<?php echo isset($item['item_discount']) ? $item['item_discount'] : 0; ?>" 
+                                                        min="0" 
+                                                        max="100"
+                                                        step="0.01" 
+                                                        class="form-control form-control-sm item-discount-input"
+                                                        onchange="this.form.submit()"
+                                                    >
+                                                    <span class="input-group-text">%</span>
+                                                </div>
+                                                <input type="hidden" name="update_item_discount" value="1">
+                                            </form>
+                                        </td>
                                         <td>
                                             <form method="POST" class="d-inline qty-form">
                                                 <input type="hidden" name="product_id" value="<?php echo $item['id']; ?>">
@@ -372,9 +424,20 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                             </form>
                                         </td>
                                         <td>
-                                            <strong class="line-total"><?php echo number_format($item['price'] * $item['quantity'], 2); ?></strong>
+                                            <?php 
+                                            $lineTotal = $item['price'] * $item['quantity'];
+                                            $itemDiscountPercent = isset($item['item_discount']) ? $item['item_discount'] : 0;
+                                            $itemDiscountAmount = $lineTotal * ($itemDiscountPercent / 100);
+                                            $lineTotalAfterDiscount = $lineTotal - $itemDiscountAmount;
+                                            ?>
+                                            <?php if ($itemDiscountPercent > 0): ?>
+                                                <small class="text-muted text-decoration-line-through d-block"><?php echo number_format($lineTotal, 2); ?></small>
+                                                <strong class="line-total text-success"><?php echo number_format($lineTotalAfterDiscount, 2); ?></strong>
+                                                <br><small class="text-muted">-<?php echo number_format($itemDiscountAmount, 2); ?></small>
+                                            <?php else: ?>
+                                                <strong class="line-total"><?php echo number_format($lineTotal, 2); ?></strong>
+                                            <?php endif; ?>
                                         </td>
-                                        <td>
                                             <form method="POST" class="d-inline">
                                                 <input type="hidden" name="product_id" value="<?php echo $item['id']; ?>">
                                                 <button type="submit" name="remove_item" class="btn btn-outline-danger btn-sm" 
@@ -387,24 +450,30 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                 <?php endforeach; ?>
                             </tbody>
                             <tfoot>
+                                <?php if ($totalItemDiscounts > 0): ?>
+                                <tr class="table-success">
+                                    <td colspan="7"><strong>Item Discounts Applied:</strong></td>
+                                    <td colspan="2"><strong class="text-success" id="tfoot-item-discounts">-<?php echo formatCurrency($totalItemDiscounts); ?></strong></td>
+                                </tr>
+                                <?php endif; ?>
                                 <tr class="table-light">
-                                    <td colspan="6"><strong>Subtotal:</strong></td>
+                                    <td colspan="7"><strong>Subtotal (After Item Discounts):</strong></td>
                                     <td colspan="2"><strong id="tfoot-subtotal"><?php echo formatCurrency($subtotal); ?></strong></td>
                                 </tr>
                                 <tr class="table-warning">
-                                    <td colspan="6"><strong>Discount (<?php echo number_format($discountRate, 1); ?>%):</strong></td>
+                                    <td colspan="7"><strong>Discount (<?php echo number_format($discountRate, 1); ?>%):</strong></td>
                                     <td colspan="2"><strong class="text-danger" id="tfoot-discount">-<?php echo formatCurrency($discountAmount); ?></strong></td>
                                 </tr>
                                 <tr class="table-info">
-                                    <td colspan="6"><strong>After Discount:</strong></td>
+                                    <td colspan="7"><strong>After Discount:</strong></td>
                                     <td colspan="2"><strong id="tfoot-after-discount"><?php echo formatCurrency($afterDiscount); ?></strong></td>
                                 </tr>
                                 <tr class="table-light">
-                                    <td colspan="6"><strong>Tax (<?php echo number_format($taxRate, 1); ?>%):</strong></td>
+                                    <td colspan="7"><strong>Tax (<?php echo number_format($taxRate, 1); ?>%):</strong></td>
                                     <td colspan="2"><strong id="tfoot-tax"><?php echo formatCurrency($taxAmount); ?></strong></td>
                                 </tr>
                                 <tr class="table-success">
-                                    <td colspan="6"><strong>Grand Total:</strong></td>
+                                    <td colspan="7"><strong>Grand Total:</strong></td>
                                     <td colspan="2"><strong class="text-success" id="tfoot-total"><?php echo formatCurrency($total); ?></strong></td>
                                 </tr>
                             </tfoot>
@@ -543,15 +612,26 @@ $(document).on('keydown', function(e) {
 function recalcTotalsClientSide() {
     // Sum line totals
     let subtotal = 0;
+    let totalItemDiscounts = 0;
+    
     document.querySelectorAll('#cart-table tbody tr').forEach(row => {
         const priceEl = row.querySelector('.price-input');
         const qtyEl = row.querySelector('.quantity-input');
+        const discountEl = row.querySelector('.item-discount-input');
+        
         const price = priceEl ? parseFloat(priceEl.value) : 0;
         const qty = qtyEl ? parseFloat(qtyEl.value) : 0;
-        const line = price * qty;
+        const itemDiscountPercent = discountEl ? parseFloat(discountEl.value) : 0;
+        
+        const lineTotal = price * qty;
+        const itemDiscountAmount = lineTotal * (itemDiscountPercent / 100);
+        const lineTotalAfterDiscount = lineTotal - itemDiscountAmount;
+        
         const lineTotalEl = row.querySelector('.line-total');
-        if (lineTotalEl) lineTotalEl.textContent = line.toFixed(2);
-        subtotal += line;
+        if (lineTotalEl) lineTotalEl.textContent = lineTotalAfterDiscount.toFixed(2);
+        
+        subtotal += lineTotalAfterDiscount;
+        totalItemDiscounts += itemDiscountAmount;
     });
 
     // Calculate discount and tax using server-side rates exposed in JS via data attributes or embedded values
@@ -580,6 +660,9 @@ function recalcTotalsClientSide() {
     document.getElementById('tfoot-tax').textContent = formatMoney(taxAmount);
     document.getElementById('display-total').textContent = formatMoney(total);
     document.getElementById('tfoot-total').textContent = formatMoney(total);
+    // Update item discounts if element exists
+    const itemDiscEl = document.getElementById('tfoot-item-discounts');
+    if (itemDiscEl) itemDiscEl.textContent = '-' + formatMoney(totalItemDiscounts);
 
     // Update small breakdown
     const breakSub = document.getElementById('break-subtotal');
@@ -599,7 +682,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Recalculate while typing (live update)
 document.addEventListener('input', function(e) {
-    if (e.target.classList.contains('price-input') || e.target.classList.contains('quantity-input')) {
+    if (e.target.classList.contains('price-input') || 
+        e.target.classList.contains('quantity-input') || 
+        e.target.classList.contains('item-discount-input')) {
         recalcTotalsClientSide();
     }
 });
