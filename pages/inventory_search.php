@@ -1,5 +1,5 @@
 <?php
-require_once '..Search by product name, barcode, or category/config/database.php';
+require_once '../config/database.php';
 require_once '../includes/functions.php'; // for sanitizeInput(), executeQuery()
 
 if (!isset($_GET['query'])) {
