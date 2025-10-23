@@ -31,12 +31,26 @@
 
     $order = $orderResult[0];
 
-    // Get order items
+    // Get order items with item_discount
     $itemsQuery = "SELECT oi.*, p.name as product_name, p.barcode 
                 FROM order_items oi 
                 JOIN products p ON oi.product_id = p.id 
                 WHERE oi.order_id = ?";
     $items = executeQuery($itemsQuery, 'i', [$orderId]);
+
+    // Calculate item discounts for display
+    $totalItemDiscounts = 0;
+    foreach ($items as &$item) {
+        $lineTotal = $item['unit_price'] * $item['quantity'];
+        $itemDiscountPercent = isset($item['item_discount']) ? $item['item_discount'] : 0;
+        $item['item_discount_amount'] = $lineTotal * ($itemDiscountPercent / 100);
+        $item['line_total_after_discount'] = $lineTotal - $item['item_discount_amount'];
+        $totalItemDiscounts += $item['item_discount_amount'];
+        
+        // Debug: Check if item_discount exists
+        // echo "<!-- Debug: Item ID {$item['id']} - Discount: {$itemDiscountPercent}% -->";
+    }
+    unset($item); // break the reference
     
     // Get discount and tax rates
     $discountRate = getSetting('discount_rate', 0) * 100;
@@ -160,6 +174,12 @@
                 text-align: right;
                 width: 55px;
                 font-family: 'Courier New', monospace;
+                font-weight: 600;
+            }
+            .receipt-table .discount {
+                text-align: center;
+                width: 40px;
+                font-size: 10px;
                 font-weight: 600;
             }
             
@@ -350,6 +370,7 @@
                             <th>Item</th>
                             <th class="qty">Qty</th>
                             <th class="price">Price</th>
+                            <th class="discount">Disc %</th>
                             <th class="total">Total</th>
                         </tr>
                     </thead>
@@ -362,7 +383,23 @@
                                 </td>
                                 <td class="qty"><?php echo $item['quantity']; ?></td>
                                 <td class="price">Rs <?php echo number_format($item['unit_price'], 2); ?></td>
-                                <td class="total">Rs <?php echo number_format($item['total_price'], 2); ?></td>
+                                <td class="discount">
+                                    <?php if (isset($item['item_discount']) && $item['item_discount'] > 0): ?>
+                                        <?php echo number_format($item['item_discount'], 1); ?>%
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
+                                </td>
+                                <td class="total">
+                                    <?php if (isset($item['item_discount']) && $item['item_discount'] > 0): ?>
+                                        <small class="text-muted text-decoration-line-through" style="display: block; font-size: 9px;">
+                                            Rs <?php echo number_format($item['unit_price'] * $item['quantity'], 2); ?>
+                                        </small>
+                                        <span class="text-success">Rs <?php echo number_format($item['line_total_after_discount'], 2); ?></span>
+                                    <?php else: ?>
+                                        Rs <?php echo number_format($item['total_price'], 2); ?>
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -371,17 +408,35 @@
                 <!-- Totals -->
                 <div class="receipt-totals">
                     <div class="total-row">
-                        <span>Subtotal:</span>
+                        <span>Original Subtotal:</span>
+                        <span>Rs <?php 
+                            $originalSubtotal = 0;
+                            foreach ($items as $item) {
+                                $originalSubtotal += $item['unit_price'] * $item['quantity'];
+                            }
+                            echo number_format($originalSubtotal, 2); 
+                        ?></span>
+                    </div>
+                    
+                    <?php if ($totalItemDiscounts > 0): ?>
+                    <div class="total-row discount">
+                        <span>Item Discounts:</span>
+                        <span>-Rs <?php echo number_format($totalItemDiscounts, 2); ?></span>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <div class="total-row after-discount">
+                        <span>Subtotal After Item Discounts:</span>
                         <span>Rs <?php echo number_format($order['subtotal'], 2); ?></span>
                     </div>
                     
                     <?php if (isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
                     <div class="total-row discount">
-                        <span>Discount (<?php echo number_format($discountRate, 1); ?>%):</span>
+                        <span>Cart Discount (<?php echo number_format($discountRate, 1); ?>%):</span>
                         <span>-Rs <?php echo number_format($order['discount_amount'], 2); ?></span>
                     </div>
                     <div class="total-row after-discount">
-                        <span>After Discount:</span>
+                        <span>After Cart Discount:</span>
                         <span>Rs <?php echo number_format($order['subtotal'] - $order['discount_amount'], 2); ?></span>
                     </div>
                     <?php endif; ?>
@@ -395,14 +450,26 @@
                         <span>Rs <?php echo number_format($order['total_amount'], 2); ?></span>
                     </div>
                 </div>
-                
-                <!-- Footer -->
+               <!-- Footer -->
                 <div class="receipt-footer">
                     <div class="thank-you">Thank You for Shopping!</div>
                     
-                    <?php if (isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
+                    <?php 
+                    $totalSavings = $totalItemDiscounts + (isset($order['discount_amount']) ? $order['discount_amount'] : 0);
+                    ?>
+                    
+                    <?php if ($totalSavings > 0): ?>
                     <div class="savings-badge">
-                        YOU SAVED Rs <?php echo number_format($order['discount_amount'], 2); ?>!
+                        <?php if ($totalItemDiscounts > 0 && isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
+                            YOU SAVED Rs <?php echo number_format($totalSavings, 2); ?>!<br>
+                            <small>(Item Discounts: Rs <?php echo number_format($totalItemDiscounts, 2); ?> + Cart Discount: Rs <?php echo number_format($order['discount_amount'], 2); ?>)</small>
+                        <?php elseif ($totalItemDiscounts > 0): ?>
+                            YOU SAVED Rs <?php echo number_format($totalItemDiscounts, 2); ?>!<br>
+                            <small>(Item Discounts)</small>
+                        <?php elseif (isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
+                            YOU SAVED Rs <?php echo number_format($order['discount_amount'], 2); ?>!<br>
+                            <small>(Cart Discount)</small>
+                        <?php endif; ?>
                     </div>
                     <?php endif; ?>
                     
@@ -414,49 +481,45 @@
                     </div>
                     <div class="timestamp"><?php echo date('Y-m-d H:i:s'); ?></div>
                 </div>
-            </div>
             
-            <div class="no-print mt-4">
-                <div class="row justify-content-center">
-                    <div class="col-md-6">
-                        <div class="card order-summary">
-                            <div class="card-header bg-primary text-white">
-                                <h5 class="card-title mb-0">Order Summary</h5>
+                <?php 
+                $totalSavings = $totalItemDiscounts + (isset($order['discount_amount']) ? $order['discount_amount'] : 0);
+                ?>
+
+                <?php if ($totalSavings > 0): ?>
+                <div class="alert alert-success mb-3">
+                    <i class="fas fa-tag"></i> <strong>Discounts Applied:</strong><br>
+                    
+                    <?php if ($totalItemDiscounts > 0 && isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
+                        <div class="row">
+                            <div class="col-6">
+                                <small>Item Discounts:</small><br>
+                                <strong><?php echo formatCurrency($totalItemDiscounts); ?></strong>
                             </div>
-                            <div class="card-body">
-                                <div class="row mb-3">
-                                    <div class="col-6">
-                                        <strong>Order Number:</strong><br>
-                                        <span class="text-muted"><?php echo $order['order_number']; ?></span>
-                                    </div>
-                                    <div class="col-6">
-                                        <strong>Total Amount:</strong><br>
-                                        <span class="text-success h5"><?php echo formatCurrency($order['total_amount']); ?></span>
-                                    </div>
-                                </div>
-                                
-                                <?php if (isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
-                                <div class="alert alert-success mb-3">
-                                    <i class="fas fa-tag"></i> <strong>Discount Applied:</strong><br>
-                                    <?php echo formatCurrency($order['discount_amount']); ?> saved
-                                </div>
-                                <?php endif; ?>
-                                
-                                <div class="row">
-                                    <div class="col-6">
-                                        <strong>Items:</strong><br>
-                                        <span class="text-muted"><?php echo count($items); ?> products</span>
-                                    </div>
-                                    <div class="col-6">
-                                        <strong>Payment Method:</strong><br>
-                                        <span class="text-muted"><?php echo ucfirst($order['payment_method']); ?></span>
-                                    </div>
-                                </div>
+                            <div class="col-6">
+                                <small>Cart Discount:</small><br>
+                                <strong><?php echo formatCurrency($order['discount_amount']); ?></strong>
                             </div>
                         </div>
-                    </div>
+                        <hr class="my-2">
+                        <div class="text-center">
+                            <strong>Total Savings: <?php echo formatCurrency($totalSavings); ?></strong>
+                        </div>
+                        
+                    <?php elseif ($totalItemDiscounts > 0): ?>
+                        <div class="text-center">
+                            <small>Item Discounts:</small><br>
+                            <strong>Total Savings: <?php echo formatCurrency($totalItemDiscounts); ?></strong>
+                        </div>
+                        
+                    <?php elseif (isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
+                        <div class="text-center">
+                            <small>Cart Discount:</small><br>
+                            <strong>Total Savings: <?php echo formatCurrency($order['discount_amount']); ?></strong>
+                        </div>
+                    <?php endif; ?>
                 </div>
-            </div>
+                <?php endif; ?>
         </div>
         
         <script>
