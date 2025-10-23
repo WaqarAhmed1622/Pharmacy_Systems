@@ -102,166 +102,65 @@ $outOfStockCount = count(array_filter($products, function($product) {
             <i class="fas fa-warehouse"></i> Inventory Management
         </h5>
     </div>
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-striped">
-                <thead>
+   <div class="card-body">
+    <div class="mb-3">
+        <input type="text" id="liveSearch" class="form-control" placeholder="🔍 Search by name, barcode, or category...">
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Category</th>
+                    <th>Current Stock</th>
+                    <th>Min Level</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="inventoryTable">
+                <?php if (empty($products)): ?>
                     <tr>
-                        <th>Product</th>
-                        <th>Category</th>
-                        <th>Current Stock</th>
-                        <th>Min Level</th>
-                        <th>Status</th>
-                        <th>Actions</th>
+                        <td colspan="6" class="text-center py-4">
+                            <i class="fas fa-box fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No products found</h5>
+                            <a href="products.php" class="btn btn-primary">Add Products</a>
+                        </td>
                     </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($products)): ?>
-                        <tr>
-                            <td colspan="6" class="text-center py-4">
-                                <i class="fas fa-box fa-3x text-muted mb-3"></i>
-                                <h5 class="text-muted">No products found</h5>
-                                <a href="products.php" class="btn btn-primary">Add Products</a>
+                <?php else: ?>
+                    <?php foreach ($products as $product): ?>
+                        <tr class="<?php echo $product['stock_quantity'] <= 0 ? 'table-danger' : ($product['stock_quantity'] <= $product['min_stock_level'] ? 'table-warning' : ''); ?>">
+                            <td>
+                                <strong><?php echo sanitizeInput($product['name']); ?></strong><br>
+                                <small class="text-muted"><?php echo sanitizeInput($product['barcode']); ?></small>
+                            </td>
+                            <td><?php echo $product['category_name'] ? sanitizeInput($product['category_name']) : '<span class="text-muted">Uncategorized</span>'; ?></td>
+                            <td><?php echo $product['stock_quantity']; ?></td>
+                            <td><?php echo $product['min_stock_level']; ?></td>
+                            <td>
+                                <?php if ($product['stock_quantity'] <= 0): ?>
+                                    <span class="badge bg-danger">Out of Stock</span>
+                                <?php elseif ($product['stock_quantity'] <= $product['min_stock_level']): ?>
+                                    <span class="badge bg-warning">Low Stock</span>
+                                <?php else: ?>
+                                    <span class="badge bg-success">In Stock</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <button type="button" class="btn btn-outline-primary btn-sm" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#stockModal<?php echo $product['id']; ?>">
+                                    <i class="fas fa-edit"></i> Update Stock
+                                </button>
                             </td>
                         </tr>
-                    <?php else: ?>
-                        <?php foreach ($products as $product): ?>
-                            <tr class="<?php echo $product['stock_quantity'] <= 0 ? 'table-danger' : ($product['stock_quantity'] <= $product['min_stock_level'] ? 'table-warning' : ''); ?>">
-                                <td>
-                                    <strong><?php echo sanitizeInput($product['name']); ?></strong>
-                                    <br>
-                                    <small class="text-muted"><?php echo sanitizeInput($product['barcode']); ?></small>
-                                </td>
-                                <td><?php echo $product['category_name'] ? sanitizeInput($product['category_name']) : '<span class="text-muted">Uncategorized</span>'; ?></td>
-                                <td>
-                                    <span class="stock-quantity" data-min-stock="<?php echo $product['min_stock_level']; ?>">
-                                        <?php echo $product['stock_quantity']; ?>
-                                    </span>
-                                </td>
-                                <td><?php echo $product['min_stock_level']; ?></td>
-                                <td>
-                                    <?php if ($product['stock_quantity'] <= 0): ?>
-                                        <span class="badge bg-danger">Out of Stock</span>
-                                    <?php elseif ($product['stock_quantity'] <= $product['min_stock_level']): ?>
-                                        <span class="badge bg-warning">Low Stock</span>
-                                    <?php else: ?>
-                                        <span class="badge bg-success">In Stock</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <button type="button" class="btn btn-outline-primary btn-sm" 
-                                            data-bs-toggle="modal" 
-                                            data-bs-target="#stockModal<?php echo $product['id']; ?>">
-                                        <i class="fas fa-edit"></i> Update Stock
-                                    </button>
-                                    
-                                    <!-- Stock Update Modal -->
-                                    <div class="modal fade" id="stockModal<?php echo $product['id']; ?>" tabindex="-1">
-                                        <div class="modal-dialog">
-                                            <div class="modal-content">
-                                                <form method="POST">
-                                                    <div class="modal-header">
-                                                        <h5 class="modal-title">Update Stock - <?php echo sanitizeInput($product['name']); ?></h5>
-                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                                    </div>
-                                                    <div class="modal-body">
-    <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
-    
-    <div class="mb-3">
-        <label class="form-label">Current Stock</label>
-        <input type="text" class="form-control" value="<?php echo $product['stock_quantity']; ?>" readonly>
-    </div>
-    
-    <div class="mb-3">
-    <label class="form-label">Adjust Stock Quantity</label>
-    
-    <div class="mb-2">
-        <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="adjustment_type_<?php echo $product['id']; ?>" 
-                   id="increase_<?php echo $product['id']; ?>" value="increase" checked>
-            <label class="form-check-label" for="increase_<?php echo $product['id']; ?>">
-                Increase
-            </label>
-        </div>
-        <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="adjustment_type_<?php echo $product['id']; ?>" 
-                   id="decrease_<?php echo $product['id']; ?>" value="decrease">
-            <label class="form-check-label" for="decrease_<?php echo $product['id']; ?>">
-                Decrease
-            </label>
-        </div>
-    </div>
-    
-    <div class="input-group">
-        <input type="number" 
-               id="adjust_stock_<?php echo $product['id']; ?>" 
-               class="form-control" 
-               value="0" 
-               min="0"
-               placeholder="Enter quantity">
-        <span class="input-group-text">units</span>
-    </div>
-    <small class="text-muted">Select Increase or Decrease, then enter the quantity</small>
-</div>
-
-<div class="mb-3">
-    <label class="form-label">New Stock Quantity *</label>
-    <input type="number" 
-           name="new_stock" 
-           id="new_stock_<?php echo $product['id']; ?>" 
-           class="form-control" 
-           min="0" 
-           value="<?php echo $product['stock_quantity']; ?>" 
-           readonly 
-           required 
-           data-current="<?php echo $product['stock_quantity']; ?>">
-    <small class="text-muted">This will update automatically</small>
-</div>
-    
-    <div class="mb-3">
-        <label class="form-label">New Stock Quantity *</label>
-        <input type="number" 
-               name="new_stock" 
-               id="new_stock_<?php echo $product['id']; ?>" 
-               class="form-control" 
-               min="0" 
-               value="<?php echo $product['stock_quantity']; ?>" 
-               readonly 
-               required 
-               data-current="<?php echo $product['stock_quantity']; ?>">
-        <small class="text-muted">This will be automatically calculated based on adjustments</small>
-    </div>
-    
-    <div class="mb-3">
-        <label class="form-label">Reason for Change</label>
-        <select name="reason" class="form-select" required>
-            <option value="">Select Reason</option>
-            <option value="Stock Received">Stock Received</option>
-            <option value="Stock Adjustment">Stock Adjustment</option>
-            <option value="Damaged Items">Damaged Items</option>
-            <option value="Lost Items">Lost Items</option>
-            <option value="Expired Items">Expired Items</option>
-            <option value="Inventory Count">Inventory Count</option>
-            <option value="Other">Other</option>
-        </select>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
     </div>
 </div>
-                                                    <div class="modal-footer">
-                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                                        <button type="submit" name="update_stock" class="btn btn-primary">Update Stock</button>
-                                                    </div>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
 </div>
 
 <script>
@@ -315,6 +214,20 @@ function updateStockDisplay(productId) {
         newStockInput.value = newValue < 0 ? 0 : newValue;
     }
 }
+// Live Search Functionality
+document.getElementById('liveSearch').addEventListener('keyup', function() {
+    const query = this.value.trim();
+    const tableBody = document.getElementById('inventoryTable');
+
+    fetch('inventory_search.php?query=' + encodeURIComponent(query))
+        .then(response => response.text())
+        .then(html => {
+            tableBody.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Search error:', error);
+        });
+});
 
 // Reset adjustment when modal opens
 document.querySelectorAll('[data-bs-toggle="modal"]').forEach(function(button) {
