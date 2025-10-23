@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 19, 2025 at 10:02 AM
+-- Generation Time: Oct 23, 2025 at 04:12 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -61,6 +61,8 @@ CREATE TABLE `orders` (
   `tax_amount` decimal(10,2) DEFAULT 0.00,
   `total_amount` decimal(10,2) NOT NULL,
   `payment_method` enum('cash','card','other') DEFAULT 'cash',
+  `order_type` enum('takeaway','delivery') DEFAULT 'takeaway',
+  `delivery_charge` decimal(10,2) DEFAULT 0.00,
   `status` varchar(20) DEFAULT 'completed',
   `refund_amount` decimal(10,2) DEFAULT 0.00,
   `order_date` timestamp NOT NULL DEFAULT current_timestamp()
@@ -70,26 +72,33 @@ CREATE TABLE `orders` (
 -- Dumping data for table `orders`
 --
 
-INSERT INTO `orders` (`id`, `order_number`, `cashier_id`, `subtotal`, `discount_amount`, `tax_amount`, `total_amount`, `payment_method`, `status`, `refund_amount`, `order_date`) VALUES
-(1, 'ORD-20250915-7572', 1, 15.00, 0.00, 1.50, 16.50, 'card', 'completed', 0.00, '2025-09-15 15:02:09'),
-(2, 'ORD-20250920-0744', 1, 50.00, 0.00, 5.00, 55.00, 'cash', 'completed', 0.00, '2025-09-20 15:24:39'),
-(3, 'ORD-20251009-2952', 1, 13.50, 0.00, 1.35, 14.85, 'cash', 'completed', 0.00, '2025-10-09 11:55:11'),
-(4, 'ORD-20251009-6310', 1, 50.00, 0.00, 5.00, 55.00, 'cash', 'completed', 0.00, '2025-10-09 14:45:44'),
-(5, 'ORD-20251015-3432', 1, 10.00, 0.00, 1.00, 11.00, 'cash', 'completed', 0.00, '2025-10-15 11:23:24'),
-(6, 'ORD-20251015-8692', 1, 50.00, 0.00, 5.00, 55.00, 'cash', 'completed', 0.00, '2025-10-15 16:45:44'),
-(7, 'ORD-20251016-7255', 1, 450.00, 0.00, 45.00, 495.00, 'cash', 'completed', 0.00, '2025-10-16 10:05:24'),
-(8, 'ORD-20251016-2780', 1, 13.60, 0.00, 1.36, 14.96, 'cash', 'completed', 0.00, '2025-10-16 12:23:39'),
-(9, 'ORD-20251016-6104', 1, 15.00, 0.00, 1.50, 16.50, 'cash', 'completed', 0.00, '2025-10-16 12:53:24'),
-(10, 'ORD-20251016-9986', 1, 10.00, 0.00, 1.00, 11.00, 'cash', 'completed', 0.00, '2025-10-16 13:19:44'),
-(11, 'ORD-20251016-4973', 1, 20.00, 0.00, 2.00, 22.00, 'cash', 'completed', 0.00, '2025-10-16 13:34:13'),
-(12, 'ORD-20251017-1599', 1, 10.00, 0.00, 1.00, 11.00, 'cash', 'completed', 0.00, '2025-10-17 08:23:43'),
-(13, 'ORD-20251017-7727', 1, 10.00, 0.50, 0.95, 10.45, 'cash', 'completed', 0.00, '2025-10-17 08:24:28'),
-(14, 'ORD-20251017-5200', 1, 99.99, 5.00, 9.50, 104.49, 'cash', 'cancelled', 0.00, '2025-10-17 10:56:38'),
-(15, 'ORD-20251017-6425', 1, 5.01, 0.25, 0.48, 5.24, 'cash', 'completed', 0.00, '2025-10-17 11:47:29'),
-(16, 'ORD-20251019-2656', 1, 5.00, 0.25, 0.48, 5.23, 'cash', 'completed', 5.23, '2025-10-19 07:13:42'),
-(17, 'ORD-20251019-3263', 1, 20.00, 1.00, 1.90, 20.90, 'cash', 'returned', 20.90, '2025-10-19 07:18:15'),
-(18, 'ORD-20251019-4941', 1, 99.99, 5.00, 9.50, 104.49, 'cash', 'completed', 0.00, '2025-10-19 07:31:09'),
-(19, 'ORD-20251019-1221', 1, 3.00, 0.15, 0.29, 3.14, 'cash', 'completed', 0.00, '2025-10-19 08:00:52');
+INSERT INTO `orders` (`id`, `order_number`, `cashier_id`, `subtotal`, `discount_amount`, `tax_amount`, `total_amount`, `payment_method`, `order_type`, `delivery_charge`, `status`, `refund_amount`, `order_date`) VALUES
+(1, 'ORD-20250915-7572', 1, 15.00, 0.00, 1.50, 16.50, 'card', 'takeaway', 0.00, 'completed', 0.00, '2025-09-15 15:02:09'),
+(2, 'ORD-20250920-0744', 1, 50.00, 0.00, 5.00, 55.00, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-09-20 15:24:39'),
+(3, 'ORD-20251009-2952', 1, 13.50, 0.00, 1.35, 14.85, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-09 11:55:11'),
+(4, 'ORD-20251009-6310', 1, 50.00, 0.00, 5.00, 55.00, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-09 14:45:44'),
+(5, 'ORD-20251015-3432', 1, 10.00, 0.00, 1.00, 11.00, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-15 11:23:24'),
+(6, 'ORD-20251015-8692', 1, 50.00, 0.00, 5.00, 55.00, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-15 16:45:44'),
+(7, 'ORD-20251016-7255', 1, 450.00, 0.00, 45.00, 495.00, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-16 10:05:24'),
+(8, 'ORD-20251016-2780', 1, 13.60, 0.00, 1.36, 14.96, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-16 12:23:39'),
+(9, 'ORD-20251016-6104', 1, 15.00, 0.00, 1.50, 16.50, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-16 12:53:24'),
+(10, 'ORD-20251016-9986', 1, 10.00, 0.00, 1.00, 11.00, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-16 13:19:44'),
+(11, 'ORD-20251016-4973', 1, 20.00, 0.00, 2.00, 22.00, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-16 13:34:13'),
+(12, 'ORD-20251017-1599', 1, 10.00, 0.00, 1.00, 11.00, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-17 08:23:43'),
+(13, 'ORD-20251017-7727', 1, 10.00, 0.50, 0.95, 10.45, 'cash', 'takeaway', 0.00, 'returned', 10.45, '2025-10-17 08:24:28'),
+(14, 'ORD-20251017-5200', 1, 99.99, 5.00, 9.50, 104.49, 'cash', 'takeaway', 0.00, 'cancelled', 0.00, '2025-10-17 10:56:38'),
+(15, 'ORD-20251017-6425', 1, 5.01, 0.25, 0.48, 5.24, 'cash', 'takeaway', 0.00, 'returned', 5.24, '2025-10-17 11:47:29'),
+(16, 'ORD-20251018-8427', 1, 135.00, 6.75, 12.83, 141.08, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-18 13:26:32'),
+(17, 'ORD-20251019-7847', 1, 225.00, 11.25, 21.38, 235.13, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-19 08:18:27'),
+(18, 'ORD-20251022-5526', 1, 50.00, 2.50, 4.75, 52.25, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-22 16:44:56'),
+(19, 'ORD-20251022-3178', 1, 15.00, 0.75, 1.43, 15.68, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-22 16:59:23'),
+(20, 'ORD-20251022-8598', 1, 5.00, 0.25, 0.48, 5.23, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-22 17:08:26'),
+(21, 'ORD-20251023-8088', 1, 40.00, 2.00, 3.80, 41.80, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-23 07:46:28'),
+(22, 'ORD-20251023-9956', 1, 1000.00, 50.00, 95.00, 1045.00, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-23 07:51:42'),
+(23, 'ORD-20251023-6364', 1, 130.00, 6.50, 12.35, 135.85, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-23 08:07:07'),
+(24, 'ORD-20251023-1747', 1, 60.00, 3.00, 5.70, 62.70, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-23 08:24:36'),
+(25, 'ORD-20251023-8704', 1, 180.00, 9.00, 17.10, 188.10, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-23 13:17:56'),
+(26, 'ORD-20251023-5237', 1, 120.00, 6.00, 11.40, 125.40, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-23 14:11:50');
 
 -- --------------------------------------------------------
 
@@ -103,32 +112,41 @@ CREATE TABLE `order_items` (
   `product_id` int(11) NOT NULL,
   `quantity` int(11) NOT NULL,
   `unit_price` decimal(10,2) NOT NULL,
-  `total_price` decimal(10,2) NOT NULL
+  `item_discount` decimal(5,2) DEFAULT 0.00,
+  `total_price` decimal(10,2) NOT NULL,
+  `profit` decimal(10,2) DEFAULT 0.00
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `order_items`
 --
 
-INSERT INTO `order_items` (`id`, `order_id`, `product_id`, `quantity`, `unit_price`, `total_price`) VALUES
-(1, 1, 2, 1, 5.00, 5.00),
-(2, 1, 3, 1, 10.00, 10.00),
-(3, 2, 2, 10, 5.00, 50.00),
-(4, 3, 1, 9, 1.50, 13.50),
-(5, 4, 2, 10, 5.00, 50.00),
-(7, 6, 2, 10, 5.00, 50.00),
-(10, 9, 3, 1, 10.00, 10.00),
-(11, 9, 2, 1, 5.00, 5.00),
-(12, 10, 3, 1, 10.00, 10.00),
-(13, 11, 3, 2, 10.00, 20.00),
-(14, 12, 3, 1, 10.00, 10.00),
-(15, 13, 3, 1, 10.00, 10.00),
-(16, 14, 14, 1, 99.99, 99.99),
-(17, 15, 2, 1, 5.01, 5.01),
-(18, 16, 2, 1, 5.00, 5.00),
-(19, 17, 3, 2, 10.00, 20.00),
-(20, 18, 14, 1, 99.99, 99.99),
-(21, 19, 1, 2, 1.50, 3.00);
+INSERT INTO `order_items` (`id`, `order_id`, `product_id`, `quantity`, `unit_price`, `item_discount`, `total_price`, `profit`) VALUES
+(1, 1, 2, 1, 5.00, 0.00, 5.00, 0.00),
+(2, 1, 3, 1, 10.00, 0.00, 10.00, 0.00),
+(3, 2, 2, 10, 5.00, 0.00, 50.00, 0.00),
+(4, 3, 1, 9, 1.50, 0.00, 13.50, 0.00),
+(5, 4, 2, 10, 5.00, 0.00, 50.00, 0.00),
+(7, 6, 2, 10, 5.00, 0.00, 50.00, 0.00),
+(10, 9, 3, 1, 10.00, 0.00, 10.00, 0.00),
+(11, 9, 2, 1, 5.00, 0.00, 5.00, 0.00),
+(12, 10, 3, 1, 10.00, 0.00, 10.00, 0.00),
+(13, 11, 3, 2, 10.00, 0.00, 20.00, 0.00),
+(14, 12, 3, 1, 10.00, 0.00, 10.00, 0.00),
+(15, 13, 3, 1, 10.00, 0.00, 10.00, 0.00),
+(17, 15, 2, 1, 5.01, 0.00, 5.01, 0.00),
+(18, 16, 27, 30, 4.50, 0.00, 135.00, 0.00),
+(19, 17, 2, 45, 5.00, 0.00, 225.00, 112.50),
+(20, 18, 2, 10, 5.00, 0.00, 50.00, 0.00),
+(21, 19, 1, 10, 1.50, 0.00, 15.00, 0.00),
+(22, 20, 2, 1, 5.00, 0.00, 5.00, 0.00),
+(23, 21, 2, 10, 4.00, 0.00, 40.00, 0.00),
+(24, 22, 1, 10, 100.00, 0.00, 1000.00, 0.00),
+(25, 23, 2, 7, 10.00, 20.00, 70.00, 0.00),
+(26, 23, 27, 30, 2.00, 50.00, 60.00, 0.00),
+(27, 24, 27, 30, 2.00, 50.00, 60.00, 0.00),
+(28, 25, 1, 20, 10.00, 0.00, 200.00, 0.00),
+(29, 26, 27, 10, 12.00, 0.00, 120.00, 0.00);
 
 -- --------------------------------------------------------
 
@@ -151,20 +169,22 @@ CREATE TABLE `products` (
   `description` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `is_active` tinyint(1) NOT NULL DEFAULT 1
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `is_deleted` tinyint(1) DEFAULT 0,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `deleted_by` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `products`
 --
 
-INSERT INTO `products` (`id`, `name`, `barcode`, `category_id`, `price`, `cost`, `stock_quantity`, `min_stock_level`, `expiry_date`, `manufacturing_date`, `manufacturer`, `description`, `created_at`, `updated_at`, `is_active`) VALUES
-(1, 'Paracetamol 500mg', '1111111111111', 1, 1.50, 0.80, 2, 5, '2026-12-31', NULL, 'GSK Pharma', 'Pain relief medicine', '2025-09-15 14:50:17', '2025-10-19 08:00:52', 1),
-(2, 'Amoxicillin 250mg', '2222222222222', 2, 5.00, 2.50, 78, 10, '2027-01-15', NULL, 'Pfizer', 'Antibiotic medicine', '2025-09-15 14:50:17', '2025-10-19 07:13:42', 1),
-(3, 'Vitamin C 1000mg', '3333333333333', 3, 10.00, 6.00, 141, 15, '2026-05-20', NULL, 'Abbott', 'Immunity booster supplement', '2025-09-15 14:50:17', '2025-10-19 07:18:15', 1),
-(14, 'Sample Product', '5763330585628', 2, 99.99, 59.99, 48, 10, '2000-01-02', NULL, 'JLKjlka', 'Sample product description for testing.', '2025-10-17 10:31:26', '2025-10-19 07:31:09', 0),
-(17, 'Sample Product', '0251258107983', 2, 99.99, 59.99, 50, 10, '2026-10-17', '2025-04-17', 'Sample Manufacturer', 'Sample product description for testing.', '2025-10-17 15:53:40', '2025-10-17 15:53:40', 1),
-(18, 'Sample Product', '1801994184778', 2, 99.19, 59.99, 50, 10, '2026-10-18', '2025-04-18', 'Sample Manufacturer', 'Sample product description for testing.', '2025-10-18 17:10:04', '2025-10-18 17:10:04', 1);
+INSERT INTO `products` (`id`, `name`, `barcode`, `category_id`, `price`, `cost`, `stock_quantity`, `min_stock_level`, `expiry_date`, `manufacturing_date`, `manufacturer`, `description`, `created_at`, `updated_at`, `is_active`, `is_deleted`, `deleted_at`, `deleted_by`) VALUES
+(1, 'Paracetamol 500mg', '1111111111111', 1, 1.50, 0.80, 151, 20, '2026-12-31', NULL, 'GSK Pharma', 'Pain relief medicine', '2025-09-15 14:50:17', '2025-10-23 13:17:56', 1, 0, NULL, NULL),
+(2, 'Amoxicillin 250mg', '2222222222222', 2, 5.00, 2.50, 6, 10, '2027-01-15', NULL, 'Pfizer', 'Antibiotic medicine', '2025-09-15 14:50:17', '2025-10-23 08:07:07', 1, 0, NULL, NULL),
+(3, 'Vitamin C 1000mg', '3333333333333', 3, 10.00, 6.00, 143, 15, '2026-05-20', '2023-12-22', 'Abbott', 'Immunity booster supplement', '2025-09-15 14:50:17', '2025-10-18 12:47:34', 1, 0, NULL, NULL),
+(27, 'Panadol', '123456543321', 1, 12.00, 11.00, 0, 5, '2025-12-12', '2024-11-11', 'abbott', 'pain relief and versatile pills', '2025-10-18 12:31:09', '2025-10-23 14:11:50', 1, 1, '2025-10-19 11:20:23', 1),
+(28, 'betnovate', '0001213243545', 4, 20.00, 15.00, 100, 5, '2027-12-20', '2025-11-20', 'jisper', 'skin scraper', '2025-10-18 12:48:48', '2025-10-18 12:48:48', 1, 0, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -195,7 +215,7 @@ INSERT INTO `settings` (`id`, `setting_key`, `setting_value`) VALUES
 CREATE TABLE `users` (
   `id` int(11) NOT NULL,
   `username` varchar(50) NOT NULL,
-  `email` varchar(100) DEFAULT '',
+  `email` varchar(100) DEFAULT NULL,
   `password` varchar(255) NOT NULL,
   `role` enum('admin','cashier') DEFAULT 'cashier',
   `full_name` varchar(100) NOT NULL,
@@ -246,7 +266,8 @@ ALTER TABLE `products`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `barcode` (`barcode`),
   ADD KEY `category_id` (`category_id`),
-  ADD KEY `idx_products_barcode` (`barcode`);
+  ADD KEY `idx_products_barcode` (`barcode`),
+  ADD KEY `deleted_by` (`deleted_by`);
 
 --
 -- Indexes for table `settings`
@@ -276,19 +297,19 @@ ALTER TABLE `categories`
 -- AUTO_INCREMENT for table `orders`
 --
 ALTER TABLE `orders`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=27;
 
 --
 -- AUTO_INCREMENT for table `order_items`
 --
 ALTER TABLE `order_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30;
 
 --
 -- AUTO_INCREMENT for table `products`
 --
 ALTER TABLE `products`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=29;
 
 --
 -- AUTO_INCREMENT for table `settings`
@@ -323,7 +344,8 @@ ALTER TABLE `order_items`
 -- Constraints for table `products`
 --
 ALTER TABLE `products`
-  ADD CONSTRAINT `products_ibfk_1` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL;
+  ADD CONSTRAINT `products_ibfk_1` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `products_ibfk_2` FOREIGN KEY (`deleted_by`) REFERENCES `users` (`id`);
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
