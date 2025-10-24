@@ -28,7 +28,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
     // Get order details
     $orderQuery = "SELECT * FROM orders WHERE id = ?";
     $orderResult = executeQuery($orderQuery, 'i', [$orderId]);
-    $order = $orderResult[0];
+    // FIX: Check if order exists before accessing
+    if (empty($orderResult) || !isset($orderResult[0])) {
+        $error = "Order not found.";
+    } else {
+        $order = $orderResult[0];
     
     if ($newStatus == 'returned' && $order['status'] != 'returned') {
         // Deduct the returned amount from the order
@@ -46,15 +50,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
             $error = "Failed to update order status.";
         }
     } else {
-        if (executeNonQuery($updateQuery, 'si', [$newStatus, $orderId])) {
-            logActivity('Order Status Updated', $_SESSION['user_id'], 
-            "Order ID: $orderId, New Status: $newStatus");
-            
-            $success = "Order status updated successfully.";
-            header("Location: ?view=" . $orderId);
-            exit();
-        } else {
-            $error = "Failed to update order status.";
+            // ✅ Normal status update
+            $updateQuery = "UPDATE orders SET status = ? WHERE id = ?";  // MISSING LINE FIXED
+            if (executeNonQuery($updateQuery, 'si', [$newStatus, $orderId])) {
+                logActivity('Order Status Updated', $_SESSION['user_id'], 
+                "Order ID: $orderId, New Status: $newStatus");
+                
+                $success = "Order status updated successfully.";
+                header("Location: ?view=" . $orderId);
+                exit();
+            } else {
+                if ($newStatus == 'returned' && $order['status'] != 'returned') {
+                    header("Location: ?view=" . $orderId);
+                    exit();
+                }
+            }
         }
     }
 }
@@ -123,7 +133,8 @@ $orders = executeQuery($ordersQuery, $searchTypes, $searchParams);
 // Get total count for pagination
 $countQuery = "SELECT COUNT(*) as total FROM orders o JOIN users u ON o.cashier_id = u.id $whereClause";
 $countResult = executeQuery($countQuery, $searchTypes, $searchParams);
-$totalOrders = $countResult[0]['total'];
+// FIX: Check if array exists and has index 0 before accessing
+$totalOrders = (!empty($countResult) && isset($countResult[0])) ? $countResult[0]['total'] : 0;
 $totalPages = ceil($totalOrders / $limit);
 
 // Get order details if viewing specific order
@@ -139,7 +150,8 @@ if (isset($_GET['view']) && is_numeric($_GET['view'])) {
                     WHERE o.id = ?";
     $detailResult = executeQuery($detailQuery, 'i', [$orderId]);
     
-    if (!empty($detailResult)) {
+    // FIX: Check if array is not empty and has index 0
+    if (!empty($detailResult) && isset($detailResult[0])) {
         $orderDetails = $detailResult[0];
         
         $itemsQuery = "SELECT oi.*, p.name as product_name, p.barcode,
@@ -199,7 +211,7 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
             <!-- Status Update Button - ADD THIS -->
             <!-- Status Update Button -->
 
-            <!-- View Details Button
+            <!-- View Details Button -->
             <!-- <a href="?view=<?php echo $orderDetails['id']; ?>" class="btn btn-info me-2"> -->
 
             <!-- Print Receipt Button -->
@@ -224,6 +236,8 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                         <h5 class="modal-title">Update Order Status</h5>
                     </div>
                     <div class="modal-body">
+                        <input type="hidden" name="order_id" value="<?php echo $orderDetails['id']; ?>">
+                        
                         <div class="mb-3">
                             <label class="form-label">Current Status</label>
                             <div class="alert alert-info">
@@ -231,24 +245,24 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                             </div>
                         </div>
                         
-<div class="mb-3">
-    <label class="form-label">New Status *</label>
-    <select name="order_status" id="statusSelect" class="form-select" required>
-        <option value="completed" <?php echo $orderDetails['status'] == 'completed' ? 'selected' : ''; ?>>Completed</option>
-        <option value="returned" <?php echo $orderDetails['status'] == 'returned' ? 'selected' : ''; ?>>Returned</option>
-    </select>
-</div>
-                        
+                        <div class="mb-3">
+                            <label class="form-label">New Status *</label>
+                            <select name="order_status" id="statusSelect" class="form-select" required>
+                                <option value="completed" <?php echo $orderDetails['status'] == 'completed' ? 'selected' : ''; ?>>Completed</option>
+                                <option value="returned" <?php echo $orderDetails['status'] == 'returned' ? 'selected' : ''; ?>>Returned</option>
+                            </select>
+                        </div>
+                                                
                         <div class="alert alert-warning" id="returnWarning" style="display: none;">
                             <i class="fas fa-exclamation-triangle"></i>
                             <strong>Return Warning:</strong> Marking this order as returned will refund 
                             <strong><?php echo formatCurrency($orderDetails['total_amount']); ?></strong> 
                             and this amount will be deducted from today's sales report.
                         </div>
-                    </div>
-                    <div class="modal-footer">
-                     <button type="submit" name="update_status" class="mb-3 btn btn-primary">Update Status</button>
-                    </div>
+                        </div>
+                        <div class="modal-footer">
+                        <button type="submit" name="update_status" class="mb-3 btn btn-primary">Update Status</button>
+                        </div>
                 </form>
             </div>
         </div>
