@@ -21,10 +21,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $role = sanitizeInput($_POST['role']);
         $isActive = isset($_POST['is_active']) ? 1 : 0;
         
-        // Validation
-        if (empty($username) || empty($email) || empty($fullName)) {
+        // Validation - Email is now optional
+        if (empty($username) || empty($fullName)) {
             $error = 'Please fill all required fields.';
-        } elseif (!isValidEmail($email)) {
+        } elseif (!empty($email) && !isValidEmail($email)) {
             $error = 'Please enter a valid email address.';
         } elseif (!isUsernameUnique($username, isset($_POST['edit_user']) ? $userId : null)) {
             $error = 'Username already exists. Please choose a different username.';

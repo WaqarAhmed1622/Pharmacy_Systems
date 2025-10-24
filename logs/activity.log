@@ -366,3 +366,11 @@
 2025-10-24 18:03:52 - User 1: Order Status Updated - Order ID: , New Status: 
 2025-10-24 18:03:52 - User 1: Order Status Updated - Order ID: , New Status: 
 2025-10-24 18:47:11 - User 1: Order Returned - Order ID: 33, Amount Refunded: Rs 41.80
+2025-10-24 19:28:48 - User 1: Added user - Username: cashier1
+2025-10-24 19:30:43 - User 1: Deleted user - User ID: 0
+2025-10-24 19:30:49 - User 1: Deleted user - User ID: 0
+2025-10-24 19:30:51 - User 1: Changed user status - User ID: 0, Active: 0
+2025-10-24 19:30:52 - User 1: Changed user status - User ID: 0, Active: 0
+2025-10-24 19:30:53 - User 1: Changed user status - User ID: 0, Active: 0
+2025-10-24 19:51:45 - User 1: Added user - Username: cashier1
+2025-10-24 19:52:04 - User 1: Deleted user - User ID: 0
