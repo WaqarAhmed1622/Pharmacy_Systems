@@ -26,34 +26,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
     $newStatus = sanitizeInput($_POST['order_status']);
     
     // Get order details
-    // Fetch full order details explicitly, ensuring all required columns are selected
-    $orderQuery = "SELECT 
-                        id, 
-                        order_number, 
-                        order_date, 
-                        subtotal, 
-                        discount_amount, 
-                        item_discount, 
-                        tax_amount, 
-                        delivery_charge, 
-                        total_amount, 
-                        payment_method, 
-                        order_type, 
-                        status, 
-                        refund_amount,
-                        cashier_id
-                    FROM orders 
-                    WHERE id = ?";
-
+    $orderQuery = "SELECT * FROM orders WHERE id = ?";
     $orderResult = executeQuery($orderQuery, 'i', [$orderId]);
-
-    if (!$orderResult || count($orderResult) === 0) {
-        $error = "Order not found.";
-        return;
-    }
-
     $order = $orderResult[0];
-
     
     if ($newStatus == 'returned' && $order['status'] != 'returned') {
         // Deduct the returned amount from the order
@@ -71,8 +46,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
             $error = "Failed to update order status.";
         }
     } else {
-        // Regular status update (completed, pending, cancelled)
-        $updateQuery = "UPDATE orders SET status = ? WHERE id = ?";
         if (executeNonQuery($updateQuery, 'si', [$newStatus, $orderId])) {
             logActivity('Order Status Updated', $_SESSION['user_id'], 
             "Order ID: $orderId, New Status: $newStatus");
@@ -81,10 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
             header("Location: ?view=" . $orderId);
             exit();
         } else {
-            if ($newStatus == 'returned' && $order['status'] != 'returned') {
-                header("Location: ?view=" . $orderId);
-                exit();
-            }
+            $error = "Failed to update order status.";
         }
     }
 }
@@ -162,7 +132,8 @@ $orderItems = [];
 if (isset($_GET['view']) && is_numeric($_GET['view'])) {
     $orderId = (int)$_GET['view'];
     
-    $detailQuery = "SELECT o.*, u.full_name as cashier_name 
+    $detailQuery = "SELECT o.*, u.full_name as cashier_name,
+                    o.order_type, o.delivery_charge
                     FROM orders o 
                     JOIN users u ON o.cashier_id = u.id 
                     WHERE o.id = ?";
@@ -171,14 +142,41 @@ if (isset($_GET['view']) && is_numeric($_GET['view'])) {
     if (!empty($detailResult)) {
         $orderDetails = $detailResult[0];
         
-        $itemsQuery = "SELECT oi.*, p.name as product_name, p.barcode 
-                       FROM order_items oi 
-                       JOIN products p ON oi.product_id = p.id 
-                       WHERE oi.order_id = ?";
+        $itemsQuery = "SELECT oi.*, p.name as product_name, p.barcode,
+                        oi.item_discount
+                        FROM order_items oi 
+                        JOIN products p ON oi.product_id = p.id 
+                        WHERE oi.order_id = ?";
         $orderItems = executeQuery($itemsQuery, 'i', [$orderId]);
+        
+        // Calculate item discounts and totals (same as receipt.php)
+        $originalSubtotal = 0;
+        $totalItemDiscounts = 0;
+        $subtotalAfterItemDiscounts = 0;
+
+        foreach ($orderItems as &$item) {
+            $lineTotal = $item['unit_price'] * $item['quantity'];
+            $originalSubtotal += $lineTotal;
+            
+            $itemDiscountPercent = isset($item['item_discount']) ? $item['item_discount'] : 0;
+            $item['item_discount_amount'] = $lineTotal * ($itemDiscountPercent / 100);
+            $item['line_total_after_discount'] = $lineTotal - $item['item_discount_amount'];
+            
+            $totalItemDiscounts += $item['item_discount_amount'];
+            $subtotalAfterItemDiscounts += $item['line_total_after_discount'];
+        }
+        unset($item); // break the reference
+
+        // Recalculate correct discount and tax amounts for display
+        $calculatedDiscountAmount = $subtotalAfterItemDiscounts * (getSetting('discount_rate', 0));
+        $afterCartDiscount = $subtotalAfterItemDiscounts - $calculatedDiscountAmount;
+        $calculatedTaxAmount = $afterCartDiscount * getSetting('tax_rate', 0.10);
+        $calculatedGrandTotal = $afterCartDiscount + $calculatedTaxAmount + ($orderDetails['delivery_charge'] ?? 0);
+
+        // Calculate total savings
+        $totalSavings = $totalItemDiscounts + $calculatedDiscountAmount;
     }
 }
-
 $discountRate = getSetting('discount_rate', 0) * 100;
 $taxRate = getSetting('tax_rate', 0.10) * 100;
 ?>
@@ -201,10 +199,8 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
             <!-- Status Update Button - ADD THIS -->
             <!-- Status Update Button -->
 
-            <!-- View Details Button -->
-            <a href="?view=<?php echo $orderDetails['id']; ?>" class="btn btn-info me-2">
-                <i class="fas fa-eye"></i> View
-            </a>
+            <!-- View Details Button
+            <!-- <a href="?view=<?php echo $orderDetails['id']; ?>" class="btn btn-info me-2"> -->
 
             <!-- Print Receipt Button -->
             <a href="receipt.php?order_id=<?php echo $orderDetails['id']; ?>" class="btn btn-primary me-2" target="_blank">
@@ -228,8 +224,6 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                         <h5 class="modal-title">Update Order Status</h5>
                     </div>
                     <div class="modal-body">
-                        <input type="hidden" name="order_id" value="<?php echo $orderDetails['id']; ?>">
-                        
                         <div class="mb-3">
                             <label class="form-label">Current Status</label>
                             <div class="alert alert-info">
@@ -280,78 +274,64 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                             <td><?php echo sanitizeInput($orderDetails['cashier_name']); ?></td>
                         </tr>
                         <tr>
+                            <td><strong>Order Type:</strong></td>
+                            <td><?php echo ucfirst($orderDetails['order_type']); ?></td>
+                        </tr>
+                        <tr>
                             <td><strong>Payment Method:</strong></td>
                             <td><?php echo ucfirst($orderDetails['payment_method']); ?></td>
                         </tr>
-
-                        <?php if (!empty($orderDetails['order_type'])): ?>
                         <tr>
-                            <td><strong>Order Type:</strong></td>
-                            <td>
-                                <span class="badge bg-<?php echo strtolower($orderDetails['order_type']) === 'delivery' ? 'info' : 'secondary'; ?>">
-                                    <?php echo ucfirst($orderDetails['order_type']); ?>
-                                </span>
-                            </td>
+                            <td><strong>Original Subtotal:</strong></td>
+                            <td><?php echo formatCurrency($originalSubtotal); ?></td>
+                        </tr>
+                        <?php if ($totalItemDiscounts > 0): ?>
+                        <tr class="table-warning">
+                            <td><strong>Item Discounts:</strong></td>
+                            <td class="text-danger">-<?php echo formatCurrency($totalItemDiscounts); ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Subtotal After Item Discounts:</strong></td>
+                            <td><?php echo formatCurrency($subtotalAfterItemDiscounts); ?></td>
                         </tr>
                         <?php endif; ?>
-
-                        <tr>
-                            <td><strong>Subtotal:</strong></td>
-                            <td><?php echo formatCurrency($orderDetails['subtotal']); ?></td>
+                        <?php if ($calculatedDiscountAmount > 0): ?>
+                        <tr class="table-warning">
+                            <td><strong>Cart Discount (<?php echo number_format($discountRate, 1); ?>%):</strong></td>
+                            <td class="text-danger">-<?php echo formatCurrency($calculatedDiscountAmount); ?></td>
                         </tr>
-
-                        <?php if (!empty($orderDetails['item_discount']) && $orderDetails['item_discount'] > 0): ?>
                         <tr>
-                            <td><strong>Item Discount:</strong></td>
-                            <td class="text-danger">-<?php echo formatCurrency($orderDetails['item_discount']); ?></td>
+                            <td><strong>After Cart Discount:</strong></td>
+                            <td><?php echo formatCurrency($afterCartDiscount); ?></td>
                         </tr>
                         <?php endif; ?>
-
-                        <?php if (!empty($orderDetails['discount_amount']) && $orderDetails['discount_amount'] > 0): ?>
                         <tr>
-                            <td><strong>Cart Discount:</strong></td>
-                            <td class="text-danger">-<?php echo formatCurrency($orderDetails['discount_amount']); ?></td>
+                            <td><strong>Tax (<?php echo number_format($taxRate, 1); ?>%):</strong></td>
+                            <td><?php echo formatCurrency($calculatedTaxAmount); ?></td>
                         </tr>
-                        <?php endif; ?>
-
-                        <?php if (!empty($orderDetails['tax_amount']) && $orderDetails['tax_amount'] > 0): ?>
-                        <tr>
-                            <td><strong>Tax:</strong></td>
-                            <td><?php echo formatCurrency($orderDetails['tax_amount']); ?></td>
-                        </tr>
-                        <?php endif; ?>
-
                         <?php if (!empty($orderDetails['delivery_charge']) && $orderDetails['delivery_charge'] > 0): ?>
                         <tr>
-                            <td><strong>Delivery Charges:</strong></td>
-                            <td><?php echo formatCurrency($order['delivery_charge'] ?? 0); ?></td>
+                            <td><strong>Delivery Charge:</strong></td>
+                            <td><?php echo formatCurrency($orderDetails['delivery_charge']); ?></td>
                         </tr>
                         <?php endif; ?>
-
                         <tr class="table-success">
                             <td><strong>Total:</strong></td>
-                            <td><strong>
-                                <?php 
-                                    // Recalculate only for display consistency (optional)
-                                    $calcTotal = ($orderDetails['subtotal'] - ($orderDetails['item_discount'] + $orderDetails['discount_amount'])) 
-                                                + $orderDetails['tax_amount'] 
-                                                + $orderDetails['delivery_charge'];
-                                    echo formatCurrency($calcTotal);
-                                ?>
-                            </strong></td>
+                            <td><strong><?php echo formatCurrency($calculatedGrandTotal); ?></strong></td>
                         </tr>
                     </table>
-
-                    <?php if (
-                        (!empty($orderDetails['item_discount']) && $orderDetails['item_discount'] > 0)
-                        || (!empty($orderDetails['discount_amount']) && $orderDetails['discount_amount'] > 0)
-                    ): ?>
+                    
+                    <?php if ($totalSavings > 0): ?>
                     <div class="alert alert-success mt-3 mb-0">
-                        <i class="fas fa-tag"></i> <strong>Total Savings:</strong><br>
-                        <?php 
-                            $savings = ($orderDetails['item_discount'] ?? 0) + ($orderDetails['discount_amount'] ?? 0);
-                            echo formatCurrency($savings);
-                        ?>
+                        <i class="fas fa-tag"></i> <strong>Customer Saved:</strong><br>
+                        <?php echo formatCurrency($totalSavings); ?>
+                        <?php if ($totalItemDiscounts > 0 && $calculatedDiscountAmount > 0): ?>
+                            <br><small>(Item: <?php echo formatCurrency($totalItemDiscounts); ?> + Cart: <?php echo formatCurrency($calculatedDiscountAmount); ?>)</small>
+                        <?php elseif ($totalItemDiscounts > 0): ?>
+                            <br><small>(Item Discounts)</small>
+                        <?php else: ?>
+                            <br><small>(Cart Discount)</small>
+                        <?php endif; ?>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -472,13 +452,11 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                             <th>Order Number</th>
                             <th>Date</th>
                             <th>Cashier</th>
-                            <th>Type</th>
                             <th>Subtotal</th>
                             <th>Discount</th>
-                            <th>Total</th>
+                            <th>Total Amount</th>
                             <th>Payment</th>
                             <th>Actions</th>
-
                         </tr>
                     </thead>
                     <tbody>
@@ -504,13 +482,7 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                     </td>
                                     <td><?php echo formatDate($order['order_date']); ?></td>
                                     <td><?php echo sanitizeInput($order['cashier_name']); ?></td>
-                                    <td>
-                                        <span class="badge bg-<?php echo $order['order_type'] === 'delivery' ? 'info' : 'secondary'; ?>">
-                                            <?php echo ucfirst($order['order_type'] ?? 'N/A'); ?>
-                                        </span>
-                                    </td>
                                     <td><?php echo formatCurrency($order['subtotal']); ?></td>
-
                                     <td>
                                         <?php if (isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
                                             <span class="badge bg-warning text-dark">
@@ -529,15 +501,15 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                         </span>
                                     </td>
                                     <td>
-    <div class="btn-group btn-group-sm">
-        <a href="?view=<?php echo $order['id']; ?>" class="btn btn-outline-primary" title="View Details">
-            <i class="fas fa-eye"></i>
-        </a>
-        <a href="receipt.php?order_id=<?php echo $order['id']; ?>" class="btn btn-outline-success" title="Print Receipt" target="_blank">
-            <i class="fas fa-print"></i>
-        </a>
-    </div>
-</td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="?view=<?php echo $order['id']; ?>" class="btn btn-outline-primary" title="View Details">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <a href="receipt.php?order_id=<?php echo $order['id']; ?>" class="btn btn-outline-success" title="Print Receipt" target="_blank">
+                                                <i class="fas fa-print"></i>
+                                            </a>
+                                        </div>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -552,36 +524,26 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                         <?php if ($page > 1): ?>
                             <li class="page-item">
                                 <a class="page-link" href="?page=<?php echo $page - 1; ?>&period=<?php echo $period; ?>&start=<?php echo $customStart; ?>&end=<?php echo $customEnd; ?>&search=<?php echo urlencode($search); ?>">
-    Previous
-</a>
-
-<!-- And for the page numbers -->
-<a class="page-link" href="?page=<?php echo $i; ?>&period=<?php echo $period; ?>&start=<?php echo $customStart; ?>&end=<?php echo $customEnd; ?>&search=<?php echo urlencode($search); ?>">
-    <?php echo $i; ?>
-</a>
-
-<!-- And for Next button -->
-<a class="page-link" href="?page=<?php echo $page + 1; ?>&period=<?php echo $period; ?>&start=<?php echo $customStart; ?>&end=<?php echo $customEnd; ?>&search=<?php echo urlencode($search); ?>">
-    Next
-</a>
+                                    Previous
+                                </a>
                             </li>
                         <?php endif; ?>
-                        
+
                         <?php
                         $start = max(1, $page - 2);
                         $end = min($totalPages, $page + 2);
-                        
+
                         for ($i = $start; $i <= $end; $i++): ?>
                             <li class="page-item <?php echo $i == $page ? 'active' : ''; ?>">
-                                <a class="page-link" href="?page=<?php echo $i; ?>&search=<?php echo urlencode($search); ?>">
+                                <a class="page-link" href="?page=<?php echo $i; ?>&period=<?php echo $period; ?>&start=<?php echo $customStart; ?>&end=<?php echo $customEnd; ?>&search=<?php echo urlencode($search); ?>">
                                     <?php echo $i; ?>
                                 </a>
                             </li>
                         <?php endfor; ?>
-                        
+
                         <?php if ($page < $totalPages): ?>
                             <li class="page-item">
-                                <a class="page-link" href="?page=<?php echo $page + 1; ?>&search=<?php echo urlencode($search); ?>">
+                                <a class="page-link" href="?page=<?php echo $page + 1; ?>&period=<?php echo $period; ?>&start=<?php echo $customStart; ?>&end=<?php echo $customEnd; ?>&search=<?php echo urlencode($search); ?>">
                                     Next
                                 </a>
                             </li>

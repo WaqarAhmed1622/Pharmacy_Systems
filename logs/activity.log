@@ -118,3 +118,7 @@
 2025-10-23 19:37:27 - User 1: Updated product - Product ID: 27
 2025-10-23 19:37:35 - User 1: Updated product - Product ID: 2
 2025-10-23 21:01:32 - User 1: Updated product - Product ID: 27
+2025-10-24 15:10:18 - User 1: Order Status Updated - Order ID: 0, New Status: completed
+2025-10-24 15:10:22 - User 1: Order Status Updated - Order ID: 0, New Status: completed
+2025-10-24 15:10:36 - User 1: Order Returned - Order ID: 0, Amount Refunded: Rs 0.00
+2025-10-24 15:11:26 - User 1: Order Returned - Order ID: 0, Amount Refunded: Rs 0.00
