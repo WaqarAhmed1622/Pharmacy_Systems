@@ -18,7 +18,8 @@
     }
 
     // Get order details
-    $orderQuery = "SELECT o.*, u.full_name as cashier_name 
+    $orderQuery = "SELECT o.*, u.full_name as cashier_name, 
+                    o.order_type, o.delivery_charge
                 FROM orders o 
                 JOIN users u ON o.cashier_id = u.id 
                 WHERE o.id = ?";
@@ -38,23 +39,40 @@
                 WHERE oi.order_id = ?";
     $items = executeQuery($itemsQuery, 'i', [$orderId]);
 
-    // Calculate item discounts for display
+    // Calculate original subtotal and item discounts
+    $originalSubtotal = 0;
     $totalItemDiscounts = 0;
+    $subtotalAfterItemDiscounts = 0;
+
     foreach ($items as &$item) {
         $lineTotal = $item['unit_price'] * $item['quantity'];
+        $originalSubtotal += $lineTotal;
+        
         $itemDiscountPercent = isset($item['item_discount']) ? $item['item_discount'] : 0;
         $item['item_discount_amount'] = $lineTotal * ($itemDiscountPercent / 100);
         $item['line_total_after_discount'] = $lineTotal - $item['item_discount_amount'];
-        $totalItemDiscounts += $item['item_discount_amount'];
         
-        // Debug: Check if item_discount exists
-        // echo "<!-- Debug: Item ID {$item['id']} - Discount: {$itemDiscountPercent}% -->";
+        $totalItemDiscounts += $item['item_discount_amount'];
+        $subtotalAfterItemDiscounts += $item['line_total_after_discount'];
     }
     unset($item); // break the reference
-    
+
     // Get discount and tax rates
     $discountRate = getSetting('discount_rate', 0) * 100;
     $taxRate = getSetting('tax_rate', 0.10) * 100;
+
+    // Recalculate correct discount and tax amounts for display
+    // Cart discount should be applied on subtotal AFTER item discounts
+    $calculatedDiscountAmount = $subtotalAfterItemDiscounts * (getSetting('discount_rate', 0));
+    $afterCartDiscount = $subtotalAfterItemDiscounts - $calculatedDiscountAmount;
+
+    // Tax should be calculated on amount AFTER cart discount
+    $calculatedTaxAmount = $afterCartDiscount * getSetting('tax_rate', 0.10);
+    // Recalculate grand total
+    $calculatedGrandTotal = $afterCartDiscount + $calculatedTaxAmount + ($order['delivery_charge'] ?? 0);
+
+    // Calculate total savings
+    $totalSavings = $totalItemDiscounts + $calculatedDiscountAmount;
     ?>
 
     <!DOCTYPE html>
@@ -258,17 +276,6 @@
                 color: #333;
                 margin-bottom: 8px;
             }
-            
-            .savings-badge {
-                background-color: #28a745;
-                color: white;
-                padding: 4px 8px;
-                border-radius: 3px;
-                font-weight: 600;
-                font-size: 10px;
-                margin: 5px 0;
-            }
-            
             .timestamp {
                 font-family: 'Courier New', monospace;
                 font-size: 9px;
@@ -316,203 +323,223 @@
         </style>
     </head>
     <body>
-        <div class="container-fluid py-3">
-            <div class="no-print">
-                <div class="text-center mb-4">
-                    <button onclick="window.print()" class="btn btn-primary me-2">
-                        <i class="fas fa-print"></i> Print Receipt
-                    </button>
-                    <a href="pos.php" class="btn btn-success me-2">
-                        <i class="fas fa-plus"></i> New Sale
-                    </a>
-                    <a href="dashboard.php" class="btn btn-secondary">
-                        <i class="fas fa-home"></i> Dashboard
-                    </a>
-                </div>
+       <div class="container-fluid py-3">
+    <!-- Top Buttons -->
+    <div class="no-print">
+        <div class="text-center mb-4">
+            <button onclick="window.print()" class="btn btn-primary me-2">
+                <i class="fas fa-print"></i> Print Receipt
+            </button>
+            <a href="pos.php" class="btn btn-success me-2">
+                <i class="fas fa-plus"></i> New Sale
+            </a>
+            <a href="dashboard.php" class="btn btn-secondary">
+                <i class="fas fa-home"></i> Dashboard
+            </a>
+        </div>
+    </div>
+
+    <div class="receipt shadow-sm p-4 rounded" style="max-width: 480px; margin: auto; background: #fff;">
+        <!-- Header -->
+        <div class="receipt-header text-center mb-3">
+            <h2 class="fw-bold mb-1">Pharmacy System</h2>
+            <div class="tagline text-muted mb-2">Your Trusted Shopping Partner</div>
+            <div class="address small">
+                123 Business Street<br>
+                City, State 12345<br>
+                Phone: (555) 123-4567
             </div>
-            
-            <div class="receipt">
-                <!-- Header -->
-                <div class="receipt-header">
-                    <h2>Pharmacy System</h2>
-                    <div class="tagline">Your Trusted Shopping Partner</div>
-                    <div class="address">
-                        123 Business Street<br>
-                        City, State 12345<br>
-                        Phone: (555) 123-4567
-                    </div>
+        </div>
+
+        <!-- Order Information -->
+        <div class="receipt-info my-3 border-top border-bottom py-2">
+            <div class="receipt-info-row"><strong>Receipt #:</strong> <?php echo $order['order_number']; ?></div>
+            <div class="receipt-info-row"><strong>Date:</strong> <?php echo formatDate($order['order_date'], 'M d, Y H:i'); ?></div>
+            <div class="receipt-info-row"><strong>Cashier:</strong> <?php echo sanitizeInput($order['cashier_name']); ?></div>
+            <div class="receipt-info-row"><strong>Order Type:</strong> <?php echo ucfirst($order['order_type']); ?></div>
+            <div class="receipt-info-row"><strong>Payment:</strong> <?php echo ucfirst($order['payment_method']); ?></div>
+        </div>
+
+        <!-- Items Table -->
+        <table class="table table-sm receipt-table mb-3">
+            <thead class="table-light">
+                <tr>
+                    <th>Item</th>
+                    <th class="text-center">Qty</th>
+                    <th class="text-end">Price</th>
+                    <th class="text-center">Disc%</th>
+                    <th class="text-end">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($items as $item): ?>
+                    <tr>
+                        <td>
+                            <div class="fw-bold"><?php echo sanitizeInput($item['product_name']); ?></div>
+                            <small class="text-muted"><?php echo sanitizeInput($item['barcode']); ?></small>
+                        </td>
+                        <td class="text-center"><?php echo $item['quantity']; ?></td>
+                        <td class="text-end">Rs <?php echo number_format($item['unit_price'], 2); ?></td>
+                        <td class="text-center">
+                            <?php echo ($item['item_discount'] > 0) ? number_format($item['item_discount'], 1).'%' : '-'; ?>
+                        </td>
+                        <td class="text-end">
+                            <?php if ($item['item_discount'] > 0): ?>
+                                <small class="text-muted text-decoration-line-through d-block">
+                                    Rs <?php echo number_format($item['unit_price'] * $item['quantity'], 2); ?>
+                                </small>
+                                <span class="text-success fw-bold">Rs <?php echo number_format($item['line_total_after_discount'], 2); ?></span>
+                            <?php else: ?>
+                                Rs <?php echo number_format($item['total_price'], 2); ?>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+
+        <!-- Totals Section -->
+        <div class="receipt-totals mt-3">
+        <!-- 1. Original subtotal -->
+        <div class="total-row d-flex justify-content-between">
+            <span>Original Subtotal:</span>
+            <span>Rs <?php echo number_format($originalSubtotal, 2); ?></span>
+        </div>
+
+        <!-- 2. Item discounts -->
+        <?php if ($totalItemDiscounts > 0): ?>
+        <div class="total-row d-flex justify-content-between text-danger">
+            <span>Item Discounts:</span>
+            <span>-Rs <?php echo number_format($totalItemDiscounts, 2); ?></span>
+        </div>
+        <?php endif; ?>
+
+        <!-- 3. Subtotal after item discounts -->
+        <div class="total-row d-flex justify-content-between fw-semibold border-bottom pb-1">
+            <span>Subtotal After Item Discounts:</span>
+            <span>Rs <?php echo number_format($subtotalAfterItemDiscounts, 2); ?></span>
+        </div>
+
+        <!-- 4. Cart discount -->
+        <?php if ($calculatedDiscountAmount > 0): ?>
+        <div class="total-row d-flex justify-content-between text-danger mt-1">
+            <span>Cart Discount (<?php echo number_format($discountRate, 1); ?>%):</span>
+            <span>-Rs <?php echo number_format($calculatedDiscountAmount, 2); ?></span>
+        </div>
+
+        <!-- 5. After cart discount -->
+        <div class="total-row d-flex justify-content-between fw-semibold border-bottom pb-1">
+            <span>After Cart Discount:</span>
+            <span>Rs <?php echo number_format($afterCartDiscount, 2); ?></span>
+        </div>
+        <?php endif; ?>
+
+        <!-- 6. Tax -->
+        <div class="total-row d-flex justify-content-between mt-1">
+            <span>Tax (<?php echo number_format($taxRate, 1); ?>%):</span>
+            <span>Rs <?php echo number_format($calculatedTaxAmount, 2); ?></span>
+        </div>
+
+        <!-- 7. Delivery charge -->
+        <?php if (!empty($order['delivery_charge']) && $order['delivery_charge'] > 0): ?>
+        <div class="total-row d-flex justify-content-between">
+            <span>Delivery Charge:</span>
+            <span>Rs <?php echo number_format($order['delivery_charge'], 2); ?></span>
+        </div>
+        <?php endif; ?>
+
+        <!-- 8. Final total -->
+        <div class="total-row d-flex justify-content-between fw-bold border-top mt-2 pt-2">
+            <span>TOTAL:</span>
+            <span>Rs <?php echo number_format($calculatedGrandTotal, 2); ?></span>
+        </div>
+    </div>
+
+        <!-- Footer -->
+        <div class="receipt-footer text-center mt-4">
+            <div class="thank-you fw-bold mb-2">Thank You for Shopping!</div>
+
+            <?php if ($totalItemDiscounts > 0 && $order['discount_amount'] > 0): ?>
+                (Item: Rs <?php echo number_format($totalItemDiscounts, 2); ?> + Cart: Rs <?php echo number_format($order['discount_amount'], 2); ?>)
+                <?php endif; ?>
+
+                <?php if ($totalSavings > 0): ?>
+                <div class="savings-badge mx-auto" 
+                    style="display:inline-block;background:#0a7d30;color:#e6f9e8;
+                        border-radius:8px;padding:6px 12px;font-size:0.9rem;">
+                    YOU SAVED Rs <?php echo number_format($totalSavings, 2); ?>!<br>
+                    <small>
+                        <?php if ($totalItemDiscounts > 0 && $order['discount_amount'] > 0): ?>
+                            (Item: Rs <?php echo number_format($totalItemDiscounts, 2); ?> + Cart: Rs <?php echo number_format($order['discount_amount'], 2); ?>)
+                        <?php elseif ($totalItemDiscounts > 0): ?>
+                            (Item Discounts)
+                        <?php else: ?>
+                            (Cart Discount)
+                        <?php endif; ?>
+                    </small>
                 </div>
-                
-                <!-- Order Information -->
-                <div class="receipt-info">
-                    <div class="receipt-info-row">
-                        <span class="receipt-info-label">Receipt #:</span>
-                        <span class="receipt-info-value"><?php echo $order['order_number']; ?></span>
-                    </div>
-                    <div class="receipt-info-row">
-                        <span class="receipt-info-label">Date:</span>
-                        <span class="receipt-info-value"><?php echo formatDate($order['order_date'], 'M d, Y H:i'); ?></span>
-                    </div>
-                    <div class="receipt-info-row">
-                        <span class="receipt-info-label">Cashier:</span>
-                        <span class="receipt-info-value"><?php echo sanitizeInput($order['cashier_name']); ?></span>
-                    </div>
-                    <div class="receipt-info-row">
-                        <span class="receipt-info-label">Payment:</span>
-                        <span class="receipt-info-value"><?php echo ucfirst($order['payment_method']); ?></span>
-                    </div>
-                </div>
-                
-                <!-- Items Table -->
-                <table class="receipt-table">
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th class="qty">Qty</th>
-                            <th class="price">Price</th>
-                            <th class="discount">Disc %</th>
-                            <th class="total">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($items as $item): ?>
-                            <tr>
-                                <td>
-                                    <div class="product-name"><?php echo sanitizeInput($item['product_name']); ?></div>
-                                    <div class="product-barcode"><?php echo sanitizeInput($item['barcode']); ?></div>
-                                </td>
-                                <td class="qty"><?php echo $item['quantity']; ?></td>
-                                <td class="price">Rs <?php echo number_format($item['unit_price'], 2); ?></td>
-                                <td class="discount">
-                                    <?php if (isset($item['item_discount']) && $item['item_discount'] > 0): ?>
-                                        <?php echo number_format($item['item_discount'], 1); ?>%
-                                    <?php else: ?>
-                                        -
-                                    <?php endif; ?>
-                                </td>
-                                <td class="total">
-                                    <?php if (isset($item['item_discount']) && $item['item_discount'] > 0): ?>
-                                        <small class="text-muted text-decoration-line-through" style="display: block; font-size: 9px;">
-                                            Rs <?php echo number_format($item['unit_price'] * $item['quantity'], 2); ?>
-                                        </small>
-                                        <span class="text-success">Rs <?php echo number_format($item['line_total_after_discount'], 2); ?></span>
-                                    <?php else: ?>
-                                        Rs <?php echo number_format($item['total_price'], 2); ?>
-                                    <?php endif; ?>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-                
-                <!-- Totals -->
-                <div class="receipt-totals">
-                    <div class="total-row">
-                        <span>Original Subtotal:</span>
-                        <span>Rs <?php 
-                            $originalSubtotal = 0;
-                            foreach ($items as $item) {
-                                $originalSubtotal += $item['unit_price'] * $item['quantity'];
-                            }
-                            echo number_format($originalSubtotal, 2); 
-                        ?></span>
-                    </div>
-                    
-                    <?php if ($totalItemDiscounts > 0): ?>
-                    <div class="total-row discount">
-                        <span>Item Discounts:</span>
-                        <span>-Rs <?php echo number_format($totalItemDiscounts, 2); ?></span>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <div class="total-row after-discount">
-                        <span>Subtotal After Item Discounts:</span>
-                        <span>Rs <?php echo number_format($order['subtotal'], 2); ?></span>
-                    </div>
-                    
-                    <?php if (isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
-                    <div class="total-row discount">
-                        <span>Cart Discount (<?php echo number_format($discountRate, 1); ?>%):</span>
-                        <span>-Rs <?php echo number_format($order['discount_amount'], 2); ?></span>
-                    </div>
-                    <div class="total-row after-discount">
-                        <span>After Cart Discount:</span>
-                        <span>Rs <?php echo number_format($order['subtotal'] - $order['discount_amount'], 2); ?></span>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <div class="total-row">
-                        <span>Tax (<?php echo number_format($taxRate, 1); ?>%):</span>
-                        <span>Rs <?php echo number_format($order['tax_amount'], 2); ?></span>
-                    </div>
-                    <div class="total-row grand-total">
-                        <span>TOTAL:</span>
-                        <span>Rs <?php echo number_format($order['total_amount'], 2); ?></span>
-                    </div>
-                </div>
-               <!-- Footer -->
-                <div class="receipt-footer">
-                    <div class="thank-you">Thank You for Shopping!</div>
-                    
-                    <?php if (isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
-                    <div class="savings-badge">
-                        YOU SAVED Rs <?php echo number_format($order['discount_amount'], 2); ?>!
-                    </div>
-                    <?php endif; ?>
-                    
-                    <div class="footer-text">
-                        Please come again<br>
-                        Return Policy: 30 days with receipt<br>
-                        For support: support@pharmacy.com<br>
-                        <b>POWERED BY INVENTRA SOLUTIONS</b>
-                    </div>
-                    <div class="timestamp"><?php echo date('Y-m-d H:i:s'); ?></div>
-                </div>
+                <?php endif; ?>
+
+            <div class="footer-text small mt-3 text-muted">
+                Please come again<br>
+                Return Policy: 30 days with receipt<br>
+                For support: support@pharmacy.com<br>
+                <b>POWERED BY INVENTRA SOLUTIONS</b>
             </div>
-            
-            <div class="no-print mt-4">
-                <div class="row justify-content-center">
-                    <div class="col-md-6">
-                        <div class="card order-summary">
-                            <div class="card-header bg-primary text-white">
-                                <h5 class="card-title mb-0">Order Summary</h5>
+            <div class="timestamp small mt-2"><?php echo date('Y-m-d H:i:s'); ?></div>
+        </div>
+    </div>
+
+    <!-- Order Summary Card -->
+    <div class="no-print mt-4">
+        <div class="row justify-content-center">
+            <div class="col-md-6 col-lg-5">
+                <div class="card order-summary shadow-sm">
+                    <div class="card-header bg-primary text-white text-center">
+                        <h5 class="mb-0">Order Summary</h5>
+                    </div>
+                    <div class="card-body text-center">
+                        <div class="row mb-3">
+                            <div class="col-6 border-end">
+                                <strong>Order Number</strong><br>
+                                <span class="text-muted"><?php echo $order['order_number']; ?></span>
                             </div>
-                            <div class="card-body">
-                                <div class="row mb-3">
-                                    <div class="col-6">
-                                        <strong>Order Number:</strong><br>
-                                        <span class="text-muted"><?php echo $order['order_number']; ?></span>
-                                    </div>
-                                    <div class="col-6">
-                                        <strong>Total Amount:</strong><br>
-                                        <span class="text-success h5"><?php echo formatCurrency($order['total_amount']); ?></span>
-                                    </div>
-                                </div>
-                                
-                                <?php if (isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
-                                <div class="alert alert-success mb-3">
-                                    <i class="fas fa-tag"></i> <strong>Discount Applied:</strong><br>
-                                    <?php echo formatCurrency($order['discount_amount']); ?> saved
-                                </div>
+                            <div class="col-6">
+                                <strong>Total Amount</strong><br>
+                                <span class="text-success fw-bold"><?php echo formatCurrency($calculatedGrandTotal); ?></span>
+                            </div>
+                        </div>
+
+                        <?php if ($totalSavings > 0): ?>
+                            <div class="alert alert-success py-2 small">
+                                <i class="fas fa-tag"></i> Discounts Applied<br>
+                            <?php if ($totalItemDiscounts > 0 && $calculatedDiscountAmount > 0): ?>
+                                    Item: <?php echo formatCurrency($totalItemDiscounts); ?> | Cart: <?php echo formatCurrency($calculatedDiscountAmount); ?><br>
+                                    <b>Total Savings: <?php echo formatCurrency($totalSavings); ?></b>
+                                <?php elseif ($totalItemDiscounts > 0): ?>
+                                    Item Discounts: <?php echo formatCurrency($totalItemDiscounts); ?>
+                                <?php else: ?>
+                                Cart Discount: <?php echo formatCurrency($calculatedDiscountAmount); ?>
                                 <?php endif; ?>
-                                
-                                <div class="row">
-                                    <div class="col-6">
-                                        <strong>Items:</strong><br>
-                                        <span class="text-muted"><?php echo count($items); ?> products</span>
-                                    </div>
-                                    <div class="col-6">
-                                        <strong>Payment Method:</strong><br>
-                                        <span class="text-muted"><?php echo ucfirst($order['payment_method']); ?></span>
-                                    </div>
-                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <div class="row">
+                            <div class="col-6 border-end">
+                                <strong>Items</strong><br>
+                                <span class="text-muted"><?php echo count($items); ?> products</span>
+                            </div>
+                            <div class="col-6">
+                                <strong>Payment</strong><br>
+                                <span class="text-muted"><?php echo ucfirst($order['payment_method']); ?></span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-        
+    </div>
+</div>
         <script>
             document.addEventListener('keydown', function(e) {
                 if (e.ctrlKey && e.key === 'p') {

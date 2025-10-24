@@ -26,9 +26,34 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
     $newStatus = sanitizeInput($_POST['order_status']);
     
     // Get order details
-    $orderQuery = "SELECT * FROM orders WHERE id = ?";
+    // Fetch full order details explicitly, ensuring all required columns are selected
+    $orderQuery = "SELECT 
+                        id, 
+                        order_number, 
+                        order_date, 
+                        subtotal, 
+                        discount_amount, 
+                        item_discount, 
+                        tax_amount, 
+                        delivery_charge, 
+                        total_amount, 
+                        payment_method, 
+                        order_type, 
+                        status, 
+                        refund_amount,
+                        cashier_id
+                    FROM orders 
+                    WHERE id = ?";
+
     $orderResult = executeQuery($orderQuery, 'i', [$orderId]);
+
+    if (!$orderResult || count($orderResult) === 0) {
+        $error = "Order not found.";
+        return;
+    }
+
     $order = $orderResult[0];
+
     
     if ($newStatus == 'returned' && $order['status'] != 'returned') {
         // Deduct the returned amount from the order
@@ -258,34 +283,75 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                             <td><strong>Payment Method:</strong></td>
                             <td><?php echo ucfirst($orderDetails['payment_method']); ?></td>
                         </tr>
+
+                        <?php if (!empty($orderDetails['order_type'])): ?>
+                        <tr>
+                            <td><strong>Order Type:</strong></td>
+                            <td>
+                                <span class="badge bg-<?php echo strtolower($orderDetails['order_type']) === 'delivery' ? 'info' : 'secondary'; ?>">
+                                    <?php echo ucfirst($orderDetails['order_type']); ?>
+                                </span>
+                            </td>
+                        </tr>
+                        <?php endif; ?>
+
                         <tr>
                             <td><strong>Subtotal:</strong></td>
                             <td><?php echo formatCurrency($orderDetails['subtotal']); ?></td>
                         </tr>
-                        <?php if (isset($orderDetails['discount_amount']) && $orderDetails['discount_amount'] > 0): ?>
-                        <tr class="table-warning">
-                            <td><strong>Discount:</strong></td>
-                            <td class="text-danger">-<?php echo formatCurrency($orderDetails['discount_amount']); ?></td>
-                        </tr>
+
+                        <?php if (!empty($orderDetails['item_discount']) && $orderDetails['item_discount'] > 0): ?>
                         <tr>
-                            <td><strong>After Discount:</strong></td>
-                            <td><?php echo formatCurrency($orderDetails['subtotal'] - $orderDetails['discount_amount']); ?></td>
+                            <td><strong>Item Discount:</strong></td>
+                            <td class="text-danger">-<?php echo formatCurrency($orderDetails['item_discount']); ?></td>
                         </tr>
                         <?php endif; ?>
+
+                        <?php if (!empty($orderDetails['discount_amount']) && $orderDetails['discount_amount'] > 0): ?>
+                        <tr>
+                            <td><strong>Cart Discount:</strong></td>
+                            <td class="text-danger">-<?php echo formatCurrency($orderDetails['discount_amount']); ?></td>
+                        </tr>
+                        <?php endif; ?>
+
+                        <?php if (!empty($orderDetails['tax_amount']) && $orderDetails['tax_amount'] > 0): ?>
                         <tr>
                             <td><strong>Tax:</strong></td>
                             <td><?php echo formatCurrency($orderDetails['tax_amount']); ?></td>
                         </tr>
+                        <?php endif; ?>
+
+                        <?php if (!empty($orderDetails['delivery_charge']) && $orderDetails['delivery_charge'] > 0): ?>
+                        <tr>
+                            <td><strong>Delivery Charges:</strong></td>
+                            <td><?php echo formatCurrency($order['delivery_charge'] ?? 0); ?></td>
+                        </tr>
+                        <?php endif; ?>
+
                         <tr class="table-success">
                             <td><strong>Total:</strong></td>
-                            <td><strong><?php echo formatCurrency($orderDetails['total_amount']); ?></strong></td>
+                            <td><strong>
+                                <?php 
+                                    // Recalculate only for display consistency (optional)
+                                    $calcTotal = ($orderDetails['subtotal'] - ($orderDetails['item_discount'] + $orderDetails['discount_amount'])) 
+                                                + $orderDetails['tax_amount'] 
+                                                + $orderDetails['delivery_charge'];
+                                    echo formatCurrency($calcTotal);
+                                ?>
+                            </strong></td>
                         </tr>
                     </table>
-                    
-                    <?php if (isset($orderDetails['discount_amount']) && $orderDetails['discount_amount'] > 0): ?>
+
+                    <?php if (
+                        (!empty($orderDetails['item_discount']) && $orderDetails['item_discount'] > 0)
+                        || (!empty($orderDetails['discount_amount']) && $orderDetails['discount_amount'] > 0)
+                    ): ?>
                     <div class="alert alert-success mt-3 mb-0">
-                        <i class="fas fa-tag"></i> <strong>Customer Saved:</strong><br>
-                        <?php echo formatCurrency($orderDetails['discount_amount']); ?>
+                        <i class="fas fa-tag"></i> <strong>Total Savings:</strong><br>
+                        <?php 
+                            $savings = ($orderDetails['item_discount'] ?? 0) + ($orderDetails['discount_amount'] ?? 0);
+                            echo formatCurrency($savings);
+                        ?>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -406,11 +472,13 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                             <th>Order Number</th>
                             <th>Date</th>
                             <th>Cashier</th>
+                            <th>Type</th>
                             <th>Subtotal</th>
                             <th>Discount</th>
-                            <th>Total Amount</th>
+                            <th>Total</th>
                             <th>Payment</th>
                             <th>Actions</th>
+
                         </tr>
                     </thead>
                     <tbody>
@@ -436,7 +504,13 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                     </td>
                                     <td><?php echo formatDate($order['order_date']); ?></td>
                                     <td><?php echo sanitizeInput($order['cashier_name']); ?></td>
+                                    <td>
+                                        <span class="badge bg-<?php echo $order['order_type'] === 'delivery' ? 'info' : 'secondary'; ?>">
+                                            <?php echo ucfirst($order['order_type'] ?? 'N/A'); ?>
+                                        </span>
+                                    </td>
                                     <td><?php echo formatCurrency($order['subtotal']); ?></td>
+
                                     <td>
                                         <?php if (isset($order['discount_amount']) && $order['discount_amount'] > 0): ?>
                                             <span class="badge bg-warning text-dark">

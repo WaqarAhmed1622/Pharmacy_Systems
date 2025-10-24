@@ -10,10 +10,17 @@ ob_start();
 require_once '../includes/header.php';
 require_once '../config/database.php'; // Ensure DB connection for search
 
-// Initialize cart session
+// Initialize cart and order settings
 if (!isset($_SESSION['cart'])) {
     $_SESSION['cart'] = [];
 }
+if (!isset($_SESSION['order_settings'])) {
+    $_SESSION['order_settings'] = [
+        'order_type' => 'Takeaway',
+        'delivery_charge' => 0
+    ];
+}
+
 
 $error = '';
 $success = '';
@@ -124,87 +131,123 @@ if (isset($_POST['clear_cart'])) {
     $success = 'Cart cleared.';
 }
 
-// Handle checkout
 if (isset($_POST['checkout'])) {
     if (empty($_SESSION['cart'])) {
         $error = 'Cart is empty.';
     } else {
+        // Calculate subtotal
         $subtotal = 0;
         foreach ($_SESSION['cart'] as $item) {
             $subtotal += $item['price'] * $item['quantity'];
         }
-        
-        // Calculate discount
-        $discountAmount = calculateDiscount($subtotal);
-        $afterDiscount = $subtotal - $discountAmount;
-        
-        // Calculate tax on discounted amount
+
+        // Retrieve inputs safely
+        $itemDiscount    = isset($_POST['item_discount']) ? (float)$_POST['item_discount'] : 0;
+        $discountAmount  = calculateDiscount($subtotal); // cart-level discount
+        $taxAmount       = 0; // will calculate later
+        $orderType      = $_SESSION['order_settings']['order_type'] ?? 'Takeaway';
+        $deliveryCharge = (float)($_SESSION['order_settings']['delivery_charge'] ?? 0);
+        $paymentMethod   = sanitizeInput($_POST['payment_method']);
+        $orderNumber     = generateOrderNumber();
+
+        // Apply discount and tax correctly
+        $afterDiscount = $subtotal - $itemDiscount - $discountAmount;
+        if ($afterDiscount < 0) $afterDiscount = 0; // guard
+
         $taxAmount = calculateTax($afterDiscount);
-        $total = $afterDiscount + $taxAmount;
-        
-        $orderNumber = generateOrderNumber();
-        $paymentMethod = sanitizeInput($_POST['payment_method']);
-        
+
+        // ✅ FINAL TOTAL CALCULATION
+        $total = $afterDiscount + $taxAmount + $deliveryCharge;
+
+        // Database operations
         $conn = getConnection();
         $conn->autocommit(false);
-        
+
         try {
-            $orderQuery = "INSERT INTO orders (order_number, cashier_id, subtotal, discount_amount, tax_amount, total_amount, payment_method) 
-                          VALUES (?, ?, ?, ?, ?, ?, ?)";
+            // Insert order record
+            $orderQuery = "INSERT INTO orders 
+                (order_number, cashier_id, subtotal, discount_amount, item_discount, tax_amount, delivery_charge, total_amount, payment_method, order_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
             $stmt = $conn->prepare($orderQuery);
             if ($stmt === false) {
                 throw new Exception('Prepare failed (orders): ' . $conn->error);
             }
-            $stmt->bind_param('sidddds', $orderNumber, $_SESSION['user_id'], $subtotal, $discountAmount, $taxAmount, $total, $paymentMethod);
+
+            $stmt->bind_param(
+                'sidddddsss',
+                $orderNumber,
+                $_SESSION['user_id'],
+                $subtotal,
+                $discountAmount,
+                $itemDiscount,
+                $taxAmount,
+                $deliveryCharge,
+                $total,
+                $paymentMethod,
+                $orderType
+            );
+
             if (!$stmt->execute()) {
                 throw new Exception('Execute failed (orders): ' . $stmt->error);
             }
+
             $orderId = $conn->insert_id;
             $stmt->close();
-            
+
+            // Insert order items
             foreach ($_SESSION['cart'] as $item) {
-                $itemQuery = "INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price) 
-                             VALUES (?, ?, ?, ?, ?)";
-                $stmt = $conn->prepare($itemQuery);
-                if ($stmt === false) {
-                    throw new Exception('Prepare failed (order_items): ' . $conn->error);
-                }
-                $itemTotal = $item['price'] * $item['quantity'];
-                $stmt->bind_param('iiidd', $orderId, $item['id'], $item['quantity'], $item['price'], $itemTotal);
-                if (!$stmt->execute()) {
-                    throw new Exception('Execute failed (order_items): ' . $stmt->error);
-                }
-                $stmt->close();
-                
-                $updateStockQuery = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?";
-                $stmt = $conn->prepare($updateStockQuery);
-                if ($stmt === false) {
-                    throw new Exception('Prepare failed (update stock): ' . $conn->error);
-                }
-                $stmt->bind_param('ii', $item['quantity'], $item['id']);
-                if (!$stmt->execute()) {
-                    throw new Exception('Execute failed (update stock): ' . $stmt->error);
-                }
-                $stmt->close();
+            // Get item discount percentage
+            $itemDiscountPercent = isset($item['item_discount']) ? $item['item_discount'] : 0;
+            
+            $itemQuery = "INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price, item_discount) 
+                        VALUES (?, ?, ?, ?, ?, ?)";
+            $stmt = $conn->prepare($itemQuery);
+            if ($stmt === false) {
+                throw new Exception('Prepare failed (order_items): ' . $conn->error);
             }
-            
+
+            $itemTotal = $item['price'] * $item['quantity'];
+            $stmt->bind_param('iiiddd', $orderId, $item['id'], $item['quantity'], $item['price'], $itemTotal, $itemDiscountPercent);
+
+            if (!$stmt->execute()) {
+                throw new Exception('Execute failed (order_items): ' . $stmt->error);
+            }
+            $stmt->close();
+
+            // Update product stock
+            $updateStockQuery = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?";
+            $stmt = $conn->prepare($updateStockQuery);
+            if ($stmt === false) {
+                throw new Exception('Prepare failed (update stock): ' . $conn->error);
+            }
+            $stmt->bind_param('ii', $item['quantity'], $item['id']);
+            if (!$stmt->execute()) {
+                throw new Exception('Execute failed (update stock): ' . $stmt->error);
+            }
+            $stmt->close();
+        }
+
+            // Commit all
             $conn->commit();
-            
+
+            // Clear session and redirect
             $_SESSION['cart'] = [];
             $_SESSION['last_order_id'] = $orderId;
-            
+
             ob_end_clean();
             header('Location: receipt.php?order_id=' . $orderId);
             exit;
-            
+
         } catch (Exception $e) {
             $conn->rollback();
             $error = 'Failed to process order. Please try again. (' . htmlspecialchars($e->getMessage()) . ')';
         }
-        
+
         $conn->close();
     }
 }
+
 
 // Calculate cart totals
 $subtotal = 0;
@@ -236,6 +279,74 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                     <i class="fas fa-barcode"></i> Scan or Search Product
                 </h5>
             </div>
+            <!-- ============================= -->
+            <!-- ORDER TYPE + DELIVERY CHARGE -->
+            <!-- ============================= -->
+            <div class="mt-3">
+                <label class="form-label"><i class="fas fa-concierge-bell"></i> Order Type</label>
+                <select id="orderType" name="order_type" class="form-select" required>
+                    <option value="Takeaway">Takeaway</option>
+                    <option value="Delivery">Delivery</option>
+                </select>
+            </div>
+
+            <div class="mt-3" id="deliveryChargeGroup" style="display:none;">
+                <label class="form-label"><i class="fas fa-truck"></i> Delivery Charge</label>
+                <input type="number" step="0.01" min="0" id="deliveryCharge" name="delivery_charge" class="form-control" value="0">
+                <small class="text-muted">Automatically added to the grand total</small>
+            </div>
+
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const orderType = document.getElementById('orderType');
+                const deliveryGroup = document.getElementById('deliveryChargeGroup');
+                const deliveryCharge = document.getElementById('deliveryCharge');
+                 // Load previous state from session (via PHP echo)
+                orderType.value = <?php echo json_encode($_SESSION['order_settings']['order_type']); ?>;
+                deliveryCharge.value = <?php echo json_encode($_SESSION['order_settings']['delivery_charge']); ?>;
+
+                if (orderType.value === 'Delivery') {
+                    deliveryGroup.style.display = 'block';
+                }
+
+                // Save order type via AJAX when changed
+                orderType.addEventListener('change', function() {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', 'update_order_type.php', true);
+                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                    xhr.send('order_type=' + encodeURIComponent(this.value));
+                    
+                    if (this.value === 'Delivery') {
+                        deliveryGroup.style.display = 'block';
+                    } else {
+                        deliveryGroup.style.display = 'none';
+                        deliveryCharge.value = 0;
+                    }
+                });
+
+                // Save delivery charge dynamically
+                deliveryCharge.addEventListener('input', function() {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', 'update_order_type.php', true);
+                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                    xhr.send('delivery_charge=' + encodeURIComponent(this.value));
+                });
+        
+                orderType.addEventListener('change', function() {
+                    if (this.value === 'Delivery') {
+                        deliveryGroup.style.display = 'block';
+                    } else {
+                        deliveryGroup.style.display = 'none';
+                        deliveryCharge.value = 0;
+                        recalcTotalsClientSide(); // reset total when switching to Takeaway
+                    }
+                });
+
+                // Recalculate totals dynamically when delivery charge changes
+                deliveryCharge.addEventListener('input', recalcTotalsClientSide);
+            });
+            </script>
+
             <div class="card-body">
                <!-- Barcode Form -->
                 <form method="POST" class="mb-3" id="barcodeForm">
@@ -642,7 +753,10 @@ function recalcTotalsClientSide() {
     const discountAmount = subtotal * discountRate;
     const afterDiscount = subtotal - discountAmount;
     const taxAmount = afterDiscount * taxRate;
-    const total = afterDiscount + taxAmount;
+    // Add delivery charge if any
+    const deliveryChargeInput = document.getElementById('deliveryCharge');
+    const deliveryCharge = deliveryChargeInput ? parseFloat(deliveryChargeInput.value) || 0 : 0;
+    const total = afterDiscount + taxAmount + deliveryCharge;
 
     // Update DOM (use formatCurrency via simple JS formatting — server handles symbol; we'll mimic numeric format)
     // If you prefer symbol, formatCurrency server-side prints symbol; here we will show numeric with two decimals
