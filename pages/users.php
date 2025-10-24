@@ -95,28 +95,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
     } elseif (isset($_POST['delete_user'])) {
+        // Get user ID from form data instead of URL parameter
+        $deleteUserId = isset($_POST['user_id']) ? (int)$_POST['user_id'] : 0;
+        
         // Prevent deleting current user
-        if ($userId == $_SESSION['user_id']) {
+        if ($deleteUserId == $_SESSION['user_id']) {
             $error = 'You cannot delete your own account.';
         } else {
             // Check if user has orders
             $checkOrdersQuery = "SELECT COUNT(*) as count FROM orders WHERE cashier_id = ?";
-            $ordersCheck = executeQuery($checkOrdersQuery, 'i', [$userId]);
+            $ordersCheck = executeQuery($checkOrdersQuery, 'i', [$deleteUserId]);
             
             if ($ordersCheck[0]['count'] > 0) {
                 // Don't delete, just deactivate
                 $query = "UPDATE users SET is_active = 0 WHERE id = ?";
-                if (executeNonQuery($query, 'i', [$userId])) {
+                if (executeNonQuery($query, 'i', [$deleteUserId])) {
                     $success = 'User deactivated successfully (has order history).';
-                    logActivity('Deactivated user', $_SESSION['user_id'], "User ID: $userId");
+                    logActivity('Deactivated user', $_SESSION['user_id'], "User ID: $deleteUserId");
                 } else {
                     $error = 'Failed to deactivate user.';
                 }
             } else {
+                // Delete user permanently (no order history)
                 $query = "DELETE FROM users WHERE id = ?";
-                if (executeNonQuery($query, 'i', [$userId])) {
+                if (executeNonQuery($query, 'i', [$deleteUserId])) {
                     $success = 'User deleted successfully.';
-                    logActivity('Deleted user', $_SESSION['user_id'], "User ID: $userId");
+                    logActivity('Deleted user', $_SESSION['user_id'], "User ID: $deleteUserId");
                 } else {
                     $error = 'Failed to delete user.';
                 }
@@ -124,16 +128,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $action = 'list';
         }
     } elseif (isset($_POST['toggle_status'])) {
+        $toggleUserId = isset($_POST['user_id']) ? (int)$_POST['user_id'] : 0;
         $currentStatus = (int)$_POST['current_status'];
         $newStatus = $currentStatus ? 0 : 1;
         
-        if ($userId == $_SESSION['user_id'] && $newStatus == 0) {
+        if ($toggleUserId == $_SESSION['user_id'] && $newStatus == 0) {
             $error = 'You cannot deactivate your own account.';
         } else {
             $query = "UPDATE users SET is_active = ? WHERE id = ?";
-            if (executeNonQuery($query, 'ii', [$newStatus, $userId])) {
+            if (executeNonQuery($query, 'ii', [$newStatus, $toggleUserId])) {
                 $success = 'User status updated successfully.';
-                logActivity('Changed user status', $_SESSION['user_id'], "User ID: $userId, Active: $newStatus");
+                logActivity('Changed user status', $_SESSION['user_id'], "User ID: $toggleUserId, Active: $newStatus");
             } else {
                 $error = 'Failed to update user status.';
             }
@@ -214,7 +219,7 @@ if ($action == 'list') {
                                                 <br>
                                                 <small class="text-muted">
                                                     @<?php echo sanitizeInput($usr['username']); ?><br>
-                                                    <?php echo sanitizeInput($usr['email']); ?>
+                                                    <?php echo !empty($usr['email']) ? sanitizeInput($usr['email']) : '<span class="text-muted fst-italic">No email</span>'; ?>
                                                 </small>
                                             </div>
                                         </div>
@@ -245,7 +250,7 @@ if ($action == 'list') {
                                                 <i class="fas fa-edit"></i>
                                             </a>
                                             <?php if ($usr['id'] != $_SESSION['user_id']): ?>
-                                                <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure?')">
+                                                <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this user? This action cannot be undone.')">
                                                     <input type="hidden" name="user_id" value="<?php echo $usr['id']; ?>">
                                                     <button type="submit" name="delete_user" class="btn btn-outline-danger">
                                                         <i class="fas fa-trash"></i>
@@ -321,7 +326,7 @@ if ($action == 'list') {
                                     name="email" 
                                     value="<?php echo isset($user) ? sanitizeInput($user['email']) : ''; ?>"
                                 >
-                                <small class="text-muted">Email is optional</small>
+                                <small class="text-muted">Email is optional - used for password recovery</small>
                             </div>
                             
                             <div class="col-md-6 mb-3">
@@ -440,7 +445,7 @@ if ($action == 'list') {
                         <li>Passwords are encrypted</li>
                         <li>Usernames must be unique</li>
                         <li>Inactive users cannot login</li>
-                        <li>Users with orders cannot be deleted</li>
+                        <li>Users with order history are deactivated instead of deleted</li>
                         <li>Admin users have full access</li>
                     </ul>
                 </div>
@@ -450,28 +455,15 @@ if ($action == 'list') {
 
     <script>
         // Password confirmation validation
-        $('#confirm_password').on('input', function() {
-            const password = $('#password').val();
-            const confirmPassword = $(this).val();
+        document.getElementById('confirm_password')?.addEventListener('input', function() {
+            const password = document.getElementById('password').value;
+            const confirmPassword = this.value;
             
             if (password !== confirmPassword) {
                 this.setCustomValidity('Passwords do not match');
             } else {
                 this.setCustomValidity('');
             }
-        });
-        
-        // Password strength indicator
-        $('#password').on('input', function() {
-            const password = $(this).val();
-            let strength = 0;
-            
-            if (password.length >= 6) strength++;
-            if (/[a-zA-Z]/.test(password)) strength++;
-            if (/[0-9]/.test(password)) strength++;
-            if (/[^a-zA-Z0-9]/.test(password)) strength++;
-            
-            // You can add visual password strength indicator here
         });
     </script>
 <?php endif; ?>

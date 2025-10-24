@@ -459,25 +459,25 @@
         <div class="receipt-footer text-center mt-4">
             <div class="thank-you fw-bold mb-2">Thank You for Shopping!</div>
 
-            <?php if ($totalItemDiscounts > 0 && $order['discount_amount'] > 0): ?>
-                (Item: Rs <?php echo number_format($totalItemDiscounts, 2); ?> + Cart: Rs <?php echo number_format($order['discount_amount'], 2); ?>)
+            <?php if ($totalItemDiscounts > 0 &&  $calculatedDiscountAmount> 0): ?>
+                (Item: Rs <?php echo number_format($totalItemDiscounts, 2); ?> + Cart: Rs <?php echo number_format( $calculatedDiscountAmount, 2); ?>)
                 <?php endif; ?>
 
                 <?php if ($totalSavings > 0): ?>
-                <div class="savings-badge mx-auto" 
-                    style="display:inline-block;background:#0a7d30;color:#e6f9e8;
-                        border-radius:8px;padding:6px 12px;font-size:0.9rem;">
-                    YOU SAVED Rs <?php echo number_format($totalSavings, 2); ?>!<br>
-                    <small>
-                        <?php if ($totalItemDiscounts > 0 && $order['discount_amount'] > 0): ?>
-                            (Item: Rs <?php echo number_format($totalItemDiscounts, 2); ?> + Cart: Rs <?php echo number_format($order['discount_amount'], 2); ?>)
-                        <?php elseif ($totalItemDiscounts > 0): ?>
-                            (Item Discounts)
-                        <?php else: ?>
-                            (Cart Discount)
-                        <?php endif; ?>
-                    </small>
-                </div>
+                    <div class="savings-badge mx-auto" 
+                        style="display:inline-block;background:#0a7d30;color:#e6f9e8;
+                            border-radius:8px;padding:6px 12px;font-size:0.9rem;">
+                        YOU SAVED Rs <?php echo number_format($totalSavings, 2); ?>!<br>
+                        <small>
+                            <?php if ($totalItemDiscounts > 0 &&  $calculatedDiscountAmount > 0): ?>
+                                (Item: Rs <?php echo number_format($totalItemDiscounts, 2); ?> + Cart: Rs <?php echo sprintf('%.2f',  $calculatedDiscountAmount); ?>)
+                            <?php elseif ($totalItemDiscounts > 0): ?>
+                                (Item: Rs <?php echo number_format($totalItemDiscounts, 2); ?>)
+                            <?php else: ?>
+                                (Cart: Rs <?php echo sprintf('%.2f',  $calculatedDiscountAmount); ?>)
+                            <?php endif; ?>
+                        </small>
+                    </div>
                 <?php endif; ?>
 
             <div class="footer-text small mt-3 text-muted">
