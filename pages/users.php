@@ -50,11 +50,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         $types = 'sssssi';
                         
                         if (executeNonQuery($query, $types, $params)) {
-                            $success = 'User added successfully.';
-                            logActivity('Added user', $_SESSION['user_id'], "Username: $username");
-                        } else {
-                            $error = 'Failed to add user.';
-                        }
+    $success = 'User added successfully.';
+    logActivity('Added user', $_SESSION['user_id'], "Username: $username");
+    $action = 'list'; // Add this line to redirect to list view
+} else {
+    $error = 'Failed to add user.';
+}
                     }
                 }
             } else {
