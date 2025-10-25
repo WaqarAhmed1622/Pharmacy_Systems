@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 24, 2025 at 04:59 PM
+-- Generation Time: Oct 25, 2025 at 10:24 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -107,7 +107,11 @@ INSERT INTO `orders` (`id`, `order_number`, `cashier_id`, `subtotal`, `discount_
 (31, 'ORD-20251024-1683', 1, 50.00, 2.50, 0.00, 4.75, 52.25, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-24 06:20:54'),
 (32, 'ORD-20251024-7609', 1, 50.00, 2.50, 0.00, 4.75, 302.25, 'cash', 'delivery', 250.00, 'completed', 0.00, '2025-10-24 07:28:09'),
 (33, 'ORD-20251024-0547', 1, 40.00, 2.00, 0.00, 3.80, 41.80, 'cash', 'takeaway', 0.00, 'returned', 41.80, '2025-10-24 12:52:42'),
-(34, 'ORD-20251024-0560', 1, 50.00, 2.50, 0.00, 4.75, 152.25, 'cash', 'delivery', 100.00, 'completed', 0.00, '2025-10-24 14:47:30');
+(34, 'ORD-20251024-0560', 1, 50.00, 2.50, 0.00, 4.75, 152.25, 'cash', 'delivery', 100.00, 'completed', 0.00, '2025-10-24 14:47:30'),
+(35, 'ORD-20251025-2159', 1, 5.00, 0.25, 0.00, 0.48, 5.23, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-25 07:11:18'),
+(36, 'ORD-20251025-8795', 1, 12.00, 0.60, 0.00, 1.14, 12.54, 'cash', 'takeaway', 0.00, 'returned', 12.54, '2025-10-25 07:11:41'),
+(37, 'ORD-20251025-3269', 1, 1.50, 0.00, 0.00, 0.15, 1.65, 'cash', 'takeaway', 0.00, 'completed', 0.00, '2025-10-25 07:16:37'),
+(38, 'ORD-20251025-9224', 1, 47.00, 0.00, 0.00, 4.70, 51.70, 'cash', 'takeaway', 0.00, 'returned', 51.70, '2025-10-25 07:40:54');
 
 -- --------------------------------------------------------
 
@@ -120,6 +124,7 @@ CREATE TABLE `order_items` (
   `order_id` int(11) NOT NULL,
   `product_id` int(11) NOT NULL,
   `quantity` int(11) NOT NULL,
+  `quantity_returned` int(11) NOT NULL DEFAULT 0,
   `unit_price` decimal(10,2) NOT NULL,
   `item_discount` decimal(5,2) DEFAULT 0.00,
   `total_price` decimal(10,2) NOT NULL,
@@ -130,40 +135,76 @@ CREATE TABLE `order_items` (
 -- Dumping data for table `order_items`
 --
 
-INSERT INTO `order_items` (`id`, `order_id`, `product_id`, `quantity`, `unit_price`, `item_discount`, `total_price`, `profit`) VALUES
-(1, 1, 2, 1, 5.00, 0.00, 5.00, 0.00),
-(2, 1, 3, 1, 10.00, 0.00, 10.00, 0.00),
-(3, 2, 2, 10, 5.00, 0.00, 50.00, 0.00),
-(4, 3, 1, 9, 1.50, 0.00, 13.50, 0.00),
-(5, 4, 2, 10, 5.00, 0.00, 50.00, 0.00),
-(7, 6, 2, 10, 5.00, 0.00, 50.00, 0.00),
-(10, 9, 3, 1, 10.00, 0.00, 10.00, 0.00),
-(11, 9, 2, 1, 5.00, 0.00, 5.00, 0.00),
-(12, 10, 3, 1, 10.00, 0.00, 10.00, 0.00),
-(13, 11, 3, 2, 10.00, 0.00, 20.00, 0.00),
-(14, 12, 3, 1, 10.00, 0.00, 10.00, 0.00),
-(15, 13, 3, 1, 10.00, 0.00, 10.00, 0.00),
-(17, 15, 2, 1, 5.01, 0.00, 5.01, 0.00),
-(18, 16, 27, 30, 4.50, 0.00, 135.00, 0.00),
-(19, 17, 2, 45, 5.00, 0.00, 225.00, 112.50),
-(20, 18, 2, 10, 5.00, 0.00, 50.00, 0.00),
-(21, 19, 1, 10, 1.50, 0.00, 15.00, 0.00),
-(22, 20, 2, 1, 5.00, 0.00, 5.00, 0.00),
-(23, 21, 2, 10, 4.00, 0.00, 40.00, 0.00),
-(24, 22, 1, 10, 100.00, 0.00, 1000.00, 0.00),
-(25, 23, 2, 7, 10.00, 20.00, 70.00, 0.00),
-(26, 23, 27, 30, 2.00, 50.00, 60.00, 0.00),
-(27, 24, 27, 30, 2.00, 50.00, 60.00, 0.00),
-(28, 25, 1, 20, 10.00, 0.00, 200.00, 0.00),
-(29, 26, 27, 10, 12.00, 0.00, 120.00, 0.00),
-(30, 27, 27, 100, 2.00, 0.00, 200.00, 0.00),
-(31, 28, 1, 10, 10.00, 0.00, 100.00, 0.00),
-(32, 29, 2, 20, 5.00, 0.00, 100.00, 0.00),
-(33, 30, 1, 10, 15.00, 0.00, 150.00, 0.00),
-(34, 31, 2, 10, 5.00, 5.00, 50.00, 0.00),
-(35, 32, 2, 10, 5.00, 10.00, 50.00, 0.00),
-(36, 33, 28, 2, 20.00, 10.00, 40.00, 0.00),
-(37, 34, 2, 10, 5.00, 10.00, 50.00, 0.00);
+INSERT INTO `order_items` (`id`, `order_id`, `product_id`, `quantity`, `quantity_returned`, `unit_price`, `item_discount`, `total_price`, `profit`) VALUES
+(1, 1, 2, 1, 0, 5.00, 0.00, 5.00, 0.00),
+(2, 1, 3, 1, 0, 10.00, 0.00, 10.00, 0.00),
+(3, 2, 2, 10, 0, 5.00, 0.00, 50.00, 0.00),
+(4, 3, 1, 9, 0, 1.50, 0.00, 13.50, 0.00),
+(5, 4, 2, 10, 0, 5.00, 0.00, 50.00, 0.00),
+(7, 6, 2, 10, 0, 5.00, 0.00, 50.00, 0.00),
+(10, 9, 3, 1, 0, 10.00, 0.00, 10.00, 0.00),
+(11, 9, 2, 1, 0, 5.00, 0.00, 5.00, 0.00),
+(12, 10, 3, 1, 0, 10.00, 0.00, 10.00, 0.00),
+(13, 11, 3, 2, 0, 10.00, 0.00, 20.00, 0.00),
+(14, 12, 3, 1, 0, 10.00, 0.00, 10.00, 0.00),
+(15, 13, 3, 1, 0, 10.00, 0.00, 10.00, 0.00),
+(17, 15, 2, 1, 0, 5.01, 0.00, 5.01, 0.00),
+(18, 16, 27, 30, 0, 4.50, 0.00, 135.00, 0.00),
+(19, 17, 2, 45, 0, 5.00, 0.00, 225.00, 112.50),
+(20, 18, 2, 10, 0, 5.00, 0.00, 50.00, 0.00),
+(21, 19, 1, 10, 0, 1.50, 0.00, 15.00, 0.00),
+(22, 20, 2, 1, 0, 5.00, 0.00, 5.00, 0.00),
+(23, 21, 2, 10, 0, 4.00, 0.00, 40.00, 0.00),
+(24, 22, 1, 10, 0, 100.00, 0.00, 1000.00, 0.00),
+(25, 23, 2, 7, 0, 10.00, 20.00, 70.00, 0.00),
+(26, 23, 27, 30, 0, 2.00, 50.00, 60.00, 0.00),
+(27, 24, 27, 30, 0, 2.00, 50.00, 60.00, 0.00),
+(28, 25, 1, 20, 0, 10.00, 0.00, 200.00, 0.00),
+(29, 26, 27, 10, 0, 12.00, 0.00, 120.00, 0.00),
+(30, 27, 27, 100, 0, 2.00, 0.00, 200.00, 0.00),
+(31, 28, 1, 10, 0, 10.00, 0.00, 100.00, 0.00),
+(32, 29, 2, 20, 0, 5.00, 0.00, 100.00, 0.00),
+(33, 30, 1, 10, 0, 15.00, 0.00, 150.00, 0.00),
+(34, 31, 2, 10, 0, 5.00, 5.00, 50.00, 0.00),
+(35, 32, 2, 10, 0, 5.00, 10.00, 50.00, 0.00),
+(36, 33, 28, 2, 0, 20.00, 10.00, 40.00, 0.00),
+(37, 34, 2, 10, 0, 5.00, 10.00, 50.00, 0.00),
+(38, 35, 2, 1, 0, 5.00, 0.00, 5.00, 0.00),
+(39, 36, 27, 1, 0, 12.00, 2.00, 12.00, 0.00),
+(40, 37, 1, 1, 0, 1.50, 2.00, 1.50, 0.00),
+(41, 38, 2, 3, 3, 5.00, 0.00, 15.00, 0.00),
+(42, 38, 28, 1, 1, 20.00, 0.00, 20.00, 0.00),
+(43, 38, 27, 1, 1, 12.00, 0.00, 12.00, 0.00);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `order_returns`
+--
+
+CREATE TABLE `order_returns` (
+  `id` int(11) NOT NULL,
+  `order_id` int(11) NOT NULL,
+  `order_item_id` int(11) NOT NULL,
+  `product_id` int(11) NOT NULL,
+  `quantity_returned` int(11) NOT NULL,
+  `original_quantity` int(11) NOT NULL,
+  `refund_amount` decimal(10,2) NOT NULL,
+  `reason` varchar(255) DEFAULT NULL,
+  `returned_by` int(11) NOT NULL,
+  `return_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `order_returns`
+--
+
+INSERT INTO `order_returns` (`id`, `order_id`, `order_item_id`, `product_id`, `quantity_returned`, `original_quantity`, `refund_amount`, `reason`, `returned_by`, `return_date`) VALUES
+(1, 38, 41, 2, 1, 3, 5.50, '', 1, '2025-10-25 12:41:52'),
+(2, 38, 41, 2, 1, 3, 5.50, '', 1, '2025-10-25 12:42:23'),
+(3, 38, 42, 28, 1, 1, 22.00, '', 1, '2025-10-25 12:57:22'),
+(4, 38, 43, 27, 1, 1, 13.20, '', 1, '2025-10-25 12:57:43'),
+(5, 38, 41, 2, 1, 3, 5.50, '', 1, '2025-10-25 13:05:53');
 
 -- --------------------------------------------------------
 
@@ -197,11 +238,11 @@ CREATE TABLE `products` (
 --
 
 INSERT INTO `products` (`id`, `name`, `barcode`, `category_id`, `price`, `cost`, `stock_quantity`, `min_stock_level`, `expiry_date`, `manufacturing_date`, `manufacturer`, `description`, `created_at`, `updated_at`, `is_active`, `is_deleted`, `deleted_at`, `deleted_by`) VALUES
-(1, 'Paracetamol 500mg', '1111111111111', 1, 1.50, 0.80, 131, 20, '2026-12-31', NULL, 'GSK Pharma', 'Pain relief medicine', '2025-09-15 14:50:17', '2025-10-23 16:53:28', 1, 0, NULL, NULL),
-(2, 'Amoxicillin 250mg', '2222222222222', 2, 5.00, 2.50, 50, 10, '2027-01-15', NULL, 'Pfizer', 'Antibiotic medicine', '2025-09-15 14:50:17', '2025-10-24 14:47:30', 1, 0, NULL, NULL),
+(1, 'Paracetamol 500mg', '1111111111111', 1, 1.50, 0.80, 130, 20, '2026-12-31', NULL, 'GSK Pharma', 'Pain relief medicine', '2025-09-15 14:50:17', '2025-10-25 07:16:37', 1, 0, NULL, NULL),
+(2, 'Amoxicillin 250mg', '2222222222222', 2, 5.00, 2.50, 49, 10, '2027-01-15', NULL, 'Pfizer', 'Antibiotic medicine', '2025-09-15 14:50:17', '2025-10-25 08:05:53', 1, 0, NULL, NULL),
 (3, 'Vitamin C 1000mg', '3333333333333', 3, 10.00, 6.00, 143, 15, '2026-05-20', '2023-12-22', 'Abbott', 'Immunity booster supplement', '2025-09-15 14:50:17', '2025-10-18 12:47:34', 1, 0, NULL, NULL),
-(27, 'Panadol', '123456543321', 1, 12.00, 11.00, 100, 5, '2025-12-12', '2024-11-11', 'abbott', 'pain relief and versatile pills', '2025-10-18 12:31:09', '2025-10-23 16:01:32', 1, 1, '2025-10-19 11:20:23', 1),
-(28, 'betnovate', '0001213243545', 4, 20.00, 15.00, 98, 5, '2027-12-20', '2025-11-20', 'jisper', 'skin scraper', '2025-10-18 12:48:48', '2025-10-24 12:52:42', 1, 0, NULL, NULL);
+(27, 'Panadol', '123456543321', 1, 12.00, 11.00, 99, 5, '2025-12-12', '2024-11-11', 'abbott', 'pain relief and versatile pills', '2025-10-18 12:31:09', '2025-10-25 07:57:43', 1, 1, '2025-10-19 11:20:23', 1),
+(28, 'betnovate', '0001213243545', 4, 20.00, 15.00, 98, 5, '2027-12-20', '2025-11-20', 'jisper', 'skin scraper', '2025-10-18 12:48:48', '2025-10-25 07:57:22', 1, 0, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -220,8 +261,8 @@ CREATE TABLE `settings` (
 --
 
 INSERT INTO `settings` (`id`, `setting_key`, `setting_value`) VALUES
-(1, 'tax_rate', '0.1'),
-(4, 'discount_rate', '0.05');
+(1, 'tax_rate', '0'),
+(4, 'discount_rate', '0');
 
 -- --------------------------------------------------------
 
@@ -278,6 +319,16 @@ ALTER TABLE `order_items`
   ADD KEY `idx_order_items_product` (`product_id`);
 
 --
+-- Indexes for table `order_returns`
+--
+ALTER TABLE `order_returns`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `order_id` (`order_id`),
+  ADD KEY `order_item_id` (`order_item_id`),
+  ADD KEY `product_id` (`product_id`),
+  ADD KEY `returned_by` (`returned_by`);
+
+--
 -- Indexes for table `products`
 --
 ALTER TABLE `products`
@@ -315,13 +366,19 @@ ALTER TABLE `categories`
 -- AUTO_INCREMENT for table `orders`
 --
 ALTER TABLE `orders`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=35;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=39;
 
 --
 -- AUTO_INCREMENT for table `order_items`
 --
 ALTER TABLE `order_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=38;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=44;
+
+--
+-- AUTO_INCREMENT for table `order_returns`
+--
+ALTER TABLE `order_returns`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `products`
@@ -333,13 +390,13 @@ ALTER TABLE `products`
 -- AUTO_INCREMENT for table `settings`
 --
 ALTER TABLE `settings`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- Constraints for dumped tables
@@ -357,6 +414,15 @@ ALTER TABLE `orders`
 ALTER TABLE `order_items`
   ADD CONSTRAINT `order_items_ibfk_1` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `order_items_ibfk_2` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`);
+
+--
+-- Constraints for table `order_returns`
+--
+ALTER TABLE `order_returns`
+  ADD CONSTRAINT `order_returns_ibfk_1` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `order_returns_ibfk_2` FOREIGN KEY (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `order_returns_ibfk_3` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`),
+  ADD CONSTRAINT `order_returns_ibfk_4` FOREIGN KEY (`returned_by`) REFERENCES `users` (`id`);
 
 --
 -- Constraints for table `products`
