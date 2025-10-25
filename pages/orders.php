@@ -167,53 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['return_items'])) {
     }
 }
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
-    $orderId = (int)$_POST['order_id'];
-    $newStatus = sanitizeInput($_POST['order_status']);
-    
-    // Get order details
-    $orderQuery = "SELECT * FROM orders WHERE id = ?";
-    $orderResult = executeQuery($orderQuery, 'i', [$orderId]);
-    // FIX: Check if order exists before accessing
-    if (empty($orderResult) || !isset($orderResult[0])) {
-        $error = "Order not found.";
-    } else {
-        $order = $orderResult[0];
-    
-    if ($newStatus == 'returned' && $order['status'] != 'returned') {
-        // Deduct the returned amount from the order
-        $refundAmount = $order['total_amount'];
-        
-        // Update order status and mark as returned
-        $updateQuery = "UPDATE orders SET status = ?, refund_amount = ? WHERE id = ?";
-        if (executeNonQuery($updateQuery, 'sdi', [$newStatus, $refundAmount, $orderId])) {
-            // Log the activity
-            logActivity('Order Returned', $_SESSION['user_id'], 
-            "Order ID: $orderId, Amount Refunded: " . formatCurrency($refundAmount));
-            
-            $success = "Order marked as returned. Refund amount: " . formatCurrency($refundAmount);
-        } else {
-            $error = "Failed to update order status.";
-        }
-    } else {
-            // ✅ Normal status update
-            $updateQuery = "UPDATE orders SET status = ? WHERE id = ?";
-            if (executeNonQuery($updateQuery, 'si', [$newStatus, $orderId])) {
-                logActivity('Order Status Updated', $_SESSION['user_id'], 
-                "Order ID: $orderId, New Status: $newStatus");
-                
-                $success = "Order status updated successfully.";
-                header("Location: ?view=" . $orderId);
-                exit();
-            } else {
-                if ($newStatus == 'returned' && $order['status'] != 'returned') {
-                    header("Location: ?view=" . $orderId);
-                    exit();
-                }
-            }
-        }
-    }
-}
+
 
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $limit = 20;
@@ -408,71 +362,30 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
     <?php endif; ?>
 
     <!-- Order Details View -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3><i class="fas fa-receipt"></i> Order Details - <?php echo $orderDetails['order_number']; ?></h3>
-        <div>
-            <!-- Status Badge -->
-            <span class="badge bg-<?php 
-                echo $orderDetails['status'] == 'completed' ? 'success' : 
-                    ($orderDetails['status'] == 'pending' ? 'warning' : 
-                    ($orderDetails['status'] == 'returned' ? 'danger' : 'secondary'));
-            ?> me-2" style="font-size: 0.9rem; padding: 0.5rem 0.75rem;">
-                <?php echo ucfirst($orderDetails['status']); ?>
-            </span>
+    <!-- Order Details View -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3>
+        <i class="fas fa-receipt"></i> Order Details - <?php echo $orderDetails['order_number']; ?>
+        <span class="badge bg-<?php 
+            echo $orderDetails['status'] == 'completed' ? 'success' : 
+                ($orderDetails['status'] == 'pending' ? 'warning' : 
+                ($orderDetails['status'] == 'returned' ? 'danger' : 'secondary'));
+        ?> ms-2" style="font-size: 0.8rem;">
+            <?php echo ucfirst($orderDetails['status']); ?>
+        </span>
+    </h3>
+    <div>
+        <!-- Print Receipt Button -->
+        <a href="receipt.php?order_id=<?php echo $orderDetails['id']; ?>" class="btn btn-primary me-2" target="_blank">
+            <i class="fas fa-print"></i> Print Receipt
+        </a>
 
-            <!-- Print Receipt Button -->
-            <a href="receipt.php?order_id=<?php echo $orderDetails['id']; ?>" class="btn btn-primary me-2" target="_blank">
-                <i class="fas fa-print"></i> Print
-            </a>
-
-            <!-- Back Button -->
-            <a href="orders.php" class="btn btn-secondary">
-                <i class="fas fa-arrow-left"></i> Back
-            </a>
-        </div>
+        <!-- Back Button -->
+        <a href="orders.php" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Orders
+        </a>
     </div>
-
-    <!-- Status Update Modal -->
-    <div class="modal fade" id="statusModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <form method="POST">
-                    <input type="hidden" name="order_id" id="modalOrderId">
-                    <div class="modal-header">
-                        <h5 class="modal-title">Update Order Status</h5>
-                    </div>
-                    <div class="modal-body">
-                        <input type="hidden" name="order_id" value="<?php echo $orderDetails['id']; ?>">
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Current Status</label>
-                            <div class="alert alert-info">
-                                <strong><?php echo ucfirst($orderDetails['status']); ?></strong>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label">New Status *</label>
-                            <select name="order_status" id="statusSelect" class="form-select" required>
-                                <option value="completed" <?php echo $orderDetails['status'] == 'completed' ? 'selected' : ''; ?>>Completed</option>
-                                <option value="returned" <?php echo $orderDetails['status'] == 'returned' ? 'selected' : ''; ?>>Returned</option>
-                            </select>
-                        </div>
-                                                
-                        <div class="alert alert-warning" id="returnWarning" style="display: none;">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <strong>Return Warning:</strong> Marking this order as returned will refund 
-                            <strong><?php echo formatCurrency($orderDetails['total_amount']); ?></strong> 
-                            and this amount will be deducted from today's sales report.
-                        </div>
-                        </div>
-                        <div class="modal-footer">
-                        <button type="submit" name="update_status" class="mb-3 btn btn-primary">Update Status</button>
-                        </div>
-                </form>
-            </div>
-        </div>
-    </div>
+</div>
 
     <!-- Return Item Modal -->
     <div class="modal fade" id="returnItemModal" tabindex="-1">
@@ -981,41 +894,6 @@ if (isset($orderDetails) && !empty($orderDetails)) {
 // This script should work on both order details and order list pages
 
 <?php if ($orderDetails): ?>
-// Global function to open status modal from list or details view
-function openStatusModal(orderId, currentStatus) {
-    const modalOrderId = document.getElementById('modalOrderId');
-    const statusSelect = document.getElementById('statusSelect');
-    const returnWarning = document.getElementById('returnWarning');
-    
-    if (modalOrderId && statusSelect) {
-        modalOrderId.value = orderId;
-        statusSelect.value = currentStatus;
-        
-        // Hide warning initially
-        if (returnWarning) {
-            returnWarning.style.display = 'none';
-        }
-        
-        const statusModal = new bootstrap.Modal(document.getElementById('statusModal'));
-        statusModal.show();
-    }
-}
-
-// Show warning when return is selected
-const statusSelect = document.getElementById('statusSelect');
-if (statusSelect) {
-    statusSelect.addEventListener('change', function() {
-        const returnWarning = document.getElementById('returnWarning');
-        if (returnWarning) {
-            if (this.value === 'returned') {
-                returnWarning.style.display = 'block';
-            } else {
-                returnWarning.style.display = 'none';
-            }
-        }
-    });
-}
-
 // Return Item Modal Logic
 document.addEventListener('DOMContentLoaded', function() {
     const returnCheckboxes = document.querySelectorAll('.return-checkbox');
