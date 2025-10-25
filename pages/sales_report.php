@@ -52,7 +52,9 @@ switch ($period) {
         break;
 }
 
-$costQuery = "SELECT COALESCE(SUM(oi.quantity * p.cost), 0) as total_cost
+// Calculate actual profit using product cost prices (excluding returned items)
+$costQuery = "SELECT 
+                COALESCE(SUM((oi.quantity - COALESCE(oi.quantity_returned, 0)) * p.cost), 0) as total_cost
               FROM order_items oi
               JOIN products p ON oi.product_id = p.id
               JOIN orders o ON oi.order_id = o.id
@@ -60,18 +62,30 @@ $costQuery = "SELECT COALESCE(SUM(oi.quantity * p.cost), 0) as total_cost
 
 $costResult = executeQuery($costQuery, str_repeat('s', count($params)), $params);
 $totalCost = $costResult ? $costResult[0]['total_cost'] : 0;
+
+// Net profit = Net sales - Total cost
 $totalProfit = $salesData['total_sales'] - $totalCost;
 $profitMargin = $salesData['total_sales'] > 0 ? (($totalProfit / $salesData['total_sales']) * 100) : 0;
 
 // Get daily sales for chart (last 30 days)
+// Get daily sales for chart (last 30 days) - Net sales (sales - refunds)
 $chartData = [];
 $chartLabels = [];
 for ($i = 29; $i >= 0; $i--) {
     $date = date('Y-m-d', strtotime("-$i days"));
     $dateLabel = date('M j', strtotime("-$i days"));
     
-    $dayStats = executeQuery("SELECT COALESCE(SUM(total_amount), 0) as sales FROM orders WHERE DATE(order_date) = ? AND status != 'returned'", 's', [$date]);
-    $salesAmount = $dayStats ? $dayStats[0]['sales'] : 0;
+    $dayStats = executeQuery("SELECT 
+                                COALESCE(SUM(total_amount), 0) as gross_sales,
+                                COALESCE(SUM(refund_amount), 0) as refunds
+                              FROM orders 
+                              WHERE DATE(order_date) = ?", 's', [$date]);
+    
+    if ($dayStats && isset($dayStats[0])) {
+        $salesAmount = $dayStats[0]['gross_sales'] - $dayStats[0]['refunds'];
+    } else {
+        $salesAmount = 0;
+    }
     
     $chartData[] = $salesAmount;
     $chartLabels[] = $dateLabel;
@@ -135,6 +149,67 @@ for ($i = 29; $i >= 0; $i--) {
     </div>
 </div>
 
+
+<?php
+// Recalculate total sales with refunds deducted
+$whereClauseRefund = '';
+$paramsRefund = [];
+
+switch ($period) {
+    case 'today':
+        $whereClauseRefund = "WHERE DATE(order_date) = CURDATE()";
+        break;
+    case 'yesterday':
+        $whereClauseRefund = "WHERE DATE(order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)";
+        break;
+    case 'week':
+        $whereClauseRefund = "WHERE YEARWEEK(order_date) = YEARWEEK(CURDATE())";
+        break;
+    case 'month':
+        $whereClauseRefund = "WHERE MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE())";
+        break;
+    case 'year':
+        $whereClauseRefund = "WHERE YEAR(order_date) = YEAR(CURDATE())";
+        break;
+    case 'custom':
+        if ($customStart && $customEnd) {
+            $whereClauseRefund = "WHERE DATE(order_date) BETWEEN ? AND ?";
+            $paramsRefund = [$customStart, $customEnd];
+        }
+        break;
+}
+
+// Get total sales (including all orders)
+$salesQuery = "SELECT 
+                COUNT(*) as total_orders,
+                COALESCE(SUM(total_amount), 0) as gross_sales,
+                COALESCE(SUM(refund_amount), 0) as total_refunds,
+                COALESCE(AVG(total_amount), 0) as avg_order_value
+              FROM orders 
+              $whereClauseRefund";
+
+$salesResult = executeQuery($salesQuery, str_repeat('s', count($paramsRefund)), $paramsRefund);
+$salesData = $salesResult ? $salesResult[0] : ['total_orders' => 0, 'gross_sales' => 0, 'total_refunds' => 0, 'avg_order_value' => 0];
+
+// Calculate net sales (gross sales - refunds)
+$salesData['total_sales'] = $salesData['gross_sales'] - $salesData['total_refunds'];
+$salesData['net_sales'] = $salesData['total_sales'];
+
+// Get total tax collected (excluding returned orders)
+$taxQuery = "SELECT COALESCE(SUM(tax_amount), 0) as total_tax
+             FROM orders 
+             $whereClause";
+$taxResult = executeQuery($taxQuery, str_repeat('s', count($params)), $params);
+$salesData['total_tax'] = $taxResult ? $taxResult[0]['total_tax'] : 0;
+
+// Get total subtotal (excluding returned orders)
+$subtotalQuery = "SELECT COALESCE(SUM(subtotal), 0) as total_subtotal
+                  FROM orders 
+                  $whereClause";
+$subtotalResult = executeQuery($subtotalQuery, str_repeat('s', count($params)), $params);
+$salesData['total_subtotal'] = $subtotalResult ? $subtotalResult[0]['total_subtotal'] : 0;
+?>
+
 <!-- Sales Statistics -->
 <div class="row mb-4">
     <div class="col-md-3 mb-3">
@@ -146,6 +221,18 @@ for ($i = 29; $i >= 0; $i--) {
             </div>
         </div>
     </div>
+
+    <?php if ($salesData['total_refunds'] > 0): ?>
+<div class="col-md-3 mb-3">
+    <div class="card stats-card-danger h-100">
+        <div class="card-body text-center">
+            <i class="fas fa-undo fa-2x mb-2"></i>
+            <h4 class="card-title"><?php echo formatCurrency($salesData['total_refunds']); ?></h4>
+            <p class="card-text">Total Refunds</p>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
     
     <div class="col-md-3 mb-3">
         <div class="card stats-card-success h-100">
@@ -287,15 +374,15 @@ for ($i = 29; $i >= 0; $i--) {
                 }
                 
                 $paymentQuery = "SELECT 
-                                    payment_method,
-                                    COUNT(*) as count,
-                                    SUM(total_amount) as total
-                                FROM orders 
-                                $whereClause
-                                GROUP BY payment_method
-                                ORDER BY total DESC";
-                
-                $paymentMethods = executeQuery($paymentQuery, str_repeat('s', count($params)), $params);
+                    payment_method,
+                    COUNT(*) as count,
+                    COALESCE(SUM(total_amount - refund_amount), 0) as total
+                FROM orders 
+                $whereClauseRefund
+                GROUP BY payment_method
+                ORDER BY total DESC";
+
+$paymentMethods = executeQuery($paymentQuery, str_repeat('s', count($paramsRefund)), $paramsRefund);
                 ?>
                 
                 <?php if (empty($paymentMethods)): ?>
@@ -399,15 +486,24 @@ for ($i = 29; $i >= 0; $i--) {
                                     break;
                             }
                             
-                            $itemsQuery = "SELECT COALESCE(SUM(oi.quantity), 0) as total_items
-                                          FROM order_items oi
-                                          JOIN orders o ON oi.order_id = o.id
-                                          $whereClause";
+                            $itemsQuery = "SELECT COALESCE(SUM(oi.quantity - COALESCE(oi.quantity_returned, 0)), 0) as total_items
+                            FROM order_items oi
+                            JOIN orders o ON oi.order_id = o.id
+                            $whereClause";
                             $itemsResult = executeQuery($itemsQuery, str_repeat('s', count($params)), $params);
                             echo $itemsResult ? $itemsResult[0]['total_items'] : 0;
                             ?>
                         </strong>
                     </div>
+                    <?php if ($salesData['total_refunds'] > 0): ?>
+<div class="col-12 mt-3">
+    <div class="alert alert-warning">
+        <i class="fas fa-info-circle"></i> 
+        <strong>Note:</strong> Total refunds of <?php echo formatCurrency($salesData['total_refunds']); ?> 
+        have been deducted from gross sales to show net sales of <?php echo formatCurrency($salesData['total_sales']); ?>.
+    </div>
+</div>
+<?php endif; ?>
                 </div>
             </div>
         </div>

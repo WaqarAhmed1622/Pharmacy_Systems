@@ -106,32 +106,48 @@ function getSalesStats($period = 'today') {
     
     switch ($period) {
         case 'today':
-            $whereClause = "WHERE DATE(order_date) = CURDATE() AND status != 'returned'";
+            $whereClause = "WHERE DATE(order_date) = CURDATE()";
             break;
         case 'yesterday':
-            $whereClause = "WHERE DATE(order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND status != 'returned'";
+            $whereClause = "WHERE DATE(order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)";
             break;
         case 'week':
-            $whereClause = "WHERE YEARWEEK(order_date) = YEARWEEK(CURDATE()) AND status != 'returned'";
+            $whereClause = "WHERE YEARWEEK(order_date) = YEARWEEK(CURDATE())";
             break;
         case 'month':
-            $whereClause = "WHERE MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE()) AND status != 'returned'";
+            $whereClause = "WHERE MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE())";
             break;
         case 'year':
-            $whereClause = "WHERE YEAR(order_date) = YEAR(CURDATE()) AND status != 'returned'";
+            $whereClause = "WHERE YEAR(order_date) = YEAR(CURDATE())";
             break;
         default:
-            $whereClause = "WHERE DATE(order_date) = CURDATE() AND status != 'returned'";
+            $whereClause = "WHERE DATE(order_date) = CURDATE()";
     }
     
+    // Get sales data with refunds considered
     $query = "SELECT 
                 COUNT(*) as total_orders,
-                COALESCE(SUM(total_amount), 0) as total_sales,
+                COALESCE(SUM(total_amount), 0) as gross_sales,
+                COALESCE(SUM(refund_amount), 0) as total_refunds,
                 COALESCE(AVG(total_amount), 0) as avg_order_value
               FROM orders $whereClause";
     
     $result = executeQuery($query);
-    return $result ? $result[0] : ['total_orders' => 0, 'total_sales' => 0, 'avg_order_value' => 0];
+    
+    if ($result && isset($result[0])) {
+        $data = $result[0];
+        // Calculate net sales (gross sales - refunds)
+        $data['total_sales'] = $data['gross_sales'] - $data['total_refunds'];
+        return $data;
+    }
+    
+    return [
+        'total_orders' => 0, 
+        'total_sales' => 0, 
+        'gross_sales' => 0,
+        'total_refunds' => 0,
+        'avg_order_value' => 0
+    ];
 }
 
 /**

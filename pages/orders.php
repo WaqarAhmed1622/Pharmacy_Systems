@@ -21,6 +21,152 @@ if (isset($_GET['export'])) {
 ob_start();
 require_once '../includes/header.php';
 
+$error = '';
+$success = '';
+
+// Check for success message from redirect
+if (isset($_GET['success'])) {
+    $success = sanitizeInput($_GET['success']);
+}
+
+// Handle item-level returns
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['return_items'])) {
+    $orderId = (int)$_POST['order_id'];
+    $returnItemIds = isset($_POST['return_item_ids']) ? $_POST['return_item_ids'] : [];
+    $returnQuantities = isset($_POST['return_quantities']) ? $_POST['return_quantities'] : [];
+    $returnReason = isset($_POST['return_reason']) ? sanitizeInput($_POST['return_reason']) : '';
+    
+    if (empty($returnItemIds)) {
+        $error = "Please select at least one item to return.";
+    } else {
+        $totalRefund = 0;
+        $returnedItems = [];
+        $discountRate = getSetting('discount_rate', 0);
+        $taxRate = getSetting('tax_rate', 0.10);
+        
+        // Start transaction
+        $conn = getConnection();
+        mysqli_begin_transaction($conn);
+        
+        try {
+            foreach ($returnItemIds as $itemId) {
+                $itemId = (int)$itemId;
+                $qtyToReturn = isset($returnQuantities[$itemId]) ? (int)$returnQuantities[$itemId] : 0;
+                
+                if ($qtyToReturn <= 0) continue;
+                
+                // Get item details
+                $itemQuery = "SELECT oi.*, p.stock_quantity, p.name as product_name 
+                             FROM order_items oi 
+                             JOIN products p ON oi.product_id = p.id 
+                             WHERE oi.id = ?";
+                $itemResult = executeQuery($itemQuery, 'i', [$itemId]);
+                
+                if (empty($itemResult)) continue;
+                
+                $item = $itemResult[0];
+                $qtyReturned = isset($item['quantity_returned']) ? $item['quantity_returned'] : 0;
+                $qtyAvailable = $item['quantity'] - $qtyReturned;
+                
+                // Validate quantity
+                if ($qtyToReturn > $qtyAvailable) {
+                    throw new Exception("Cannot return more than available quantity for " . $item['product_name']);
+                }
+                
+                // Calculate refund for this item (with item discount)
+                $itemTotal = $item['unit_price'] * $qtyToReturn;
+                $itemDiscountPercent = isset($item['item_discount']) ? $item['item_discount'] : 0;
+                $itemDiscountAmount = $itemTotal * ($itemDiscountPercent / 100);
+                $afterItemDiscount = $itemTotal - $itemDiscountAmount;
+                
+                // Apply cart discount proportionally
+                $cartDiscountAmount = $afterItemDiscount * $discountRate;
+                $afterCartDiscount = $afterItemDiscount - $cartDiscountAmount;
+                
+                // Apply tax
+                $taxAmount = $afterCartDiscount * $taxRate;
+                $refundAmount = $afterCartDiscount + $taxAmount;
+                
+                $totalRefund += $refundAmount;
+                
+                // Update order_items - increment quantity_returned
+                $updateItemQuery = "UPDATE order_items 
+                                   SET quantity_returned = quantity_returned + ? 
+                                   WHERE id = ?";
+                if (!executeNonQuery($updateItemQuery, 'ii', [$qtyToReturn, $itemId])) {
+                    throw new Exception("Failed to update order item");
+                }
+                
+                // Insert into order_returns table
+                $insertReturnQuery = "INSERT INTO order_returns 
+                                     (order_id, order_item_id, product_id, quantity_returned, original_quantity, refund_amount, reason, returned_by) 
+                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+                $returnParams = [
+                    $orderId, 
+                    $itemId, 
+                    $item['product_id'], 
+                    $qtyToReturn, 
+                    $item['quantity'], 
+                    $refundAmount, 
+                    $returnReason, 
+                    $_SESSION['user_id']
+                ];
+                if (!executeNonQuery($insertReturnQuery, 'iiiidssi', $returnParams)) {
+                    throw new Exception("Failed to record return");
+                }
+                
+                // Update product stock
+                $updateStockQuery = "UPDATE products 
+                                    SET stock_quantity = stock_quantity + ? 
+                                    WHERE id = ?";
+                if (!executeNonQuery($updateStockQuery, 'ii', [$qtyToReturn, $item['product_id']])) {
+                    throw new Exception("Failed to update product stock");
+                }
+                
+                $returnedItems[] = $item['product_name'] . " (x" . $qtyToReturn . ")";
+            }
+            
+            // Check if all items are fully returned
+            $checkAllReturnedQuery = "SELECT COUNT(*) as total_items,
+                                      SUM(CASE WHEN quantity = quantity_returned THEN 1 ELSE 0 END) as fully_returned
+                                      FROM order_items 
+                                      WHERE order_id = ?";
+            $checkResult = executeQuery($checkAllReturnedQuery, 'i', [$orderId]);
+            
+            if (!empty($checkResult) && $checkResult[0]['total_items'] == $checkResult[0]['fully_returned']) {
+                // All items fully returned - update order status
+                $updateOrderQuery = "UPDATE orders SET status = 'returned', refund_amount = refund_amount + ? WHERE id = ?";
+                executeNonQuery($updateOrderQuery, 'di', [$totalRefund, $orderId]);
+            } else {
+                // Partial return - update refund amount only
+                $updateOrderQuery = "UPDATE orders SET refund_amount = refund_amount + ? WHERE id = ?";
+                executeNonQuery($updateOrderQuery, 'di', [$totalRefund, $orderId]);
+            }
+            
+            // Commit transaction
+            mysqli_commit($conn);
+            mysqli_close($conn);
+            
+            // Log activity
+            $itemsList = implode(", ", $returnedItems);
+            logActivity('Items Returned', $_SESSION['user_id'], 
+                       "Order ID: $orderId, Items: $itemsList, Refund: " . formatCurrency($totalRefund));
+            
+            $success = "Items returned successfully. Total refund: " . formatCurrency($totalRefund);
+            
+            // Redirect to refresh the page
+            header("Location: ?view=" . $orderId . "&success=" . urlencode($success));
+            exit();
+            
+        } catch (Exception $e) {
+            // Rollback on error
+            mysqli_rollback($conn);
+            mysqli_close($conn);
+            $error = "Return failed: " . $e->getMessage();
+        }
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
     $orderId = (int)$_POST['order_id'];
     $newStatus = sanitizeInput($_POST['order_status']);
@@ -206,10 +352,10 @@ if (isset($_GET['view']) && is_numeric($_GET['view'])) {
         $orderDetails = $detailResult[0];
         
         $itemsQuery = "SELECT oi.*, p.name as product_name, p.barcode,
-                        oi.item_discount
-                        FROM order_items oi 
-                        JOIN products p ON oi.product_id = p.id 
-                        WHERE oi.order_id = ?";
+                oi.item_discount, oi.quantity_returned
+                FROM order_items oi 
+                JOIN products p ON oi.product_id = p.id 
+                WHERE oi.order_id = ?";
         $orderItems = executeQuery($itemsQuery, 'i', [$orderId]);
         
         // Calculate item discounts and totals (same as receipt.php)
@@ -246,6 +392,21 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
 
 
 <?php if ($orderDetails): ?>
+
+    <?php if ($success): ?>
+        <div class="alert alert-success alert-dismissible fade show">
+            <i class="fas fa-check-circle"></i> <?php echo $success; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($error): ?>
+        <div class="alert alert-danger alert-dismissible fade show">
+            <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
     <!-- Order Details View -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3><i class="fas fa-receipt"></i> Order Details - <?php echo $orderDetails['order_number']; ?></h3>
@@ -312,6 +473,123 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
             </div>
         </div>
     </div>
+
+    <!-- Return Item Modal -->
+    <div class="modal fade" id="returnItemModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form method="POST" id="returnItemForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="fas fa-undo"></i> Return Order Items</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="return_items" value="1">
+                        <input type="hidden" name="order_id" value="<?php echo $orderDetails['id']; ?>">
+                        
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Select items to return:</strong> Choose the items and quantities you want to return.
+                            The refund amount will be calculated automatically.
+                        </div>
+                        
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th width="50">Return</th>
+                                        <th>Product</th>
+                                        <th>Available</th>
+                                        <th>Quantity to Return</th>
+                                        <th>Unit Price</th>
+                                        <th>Refund</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($orderItems as $item): ?>
+                                        <?php 
+                                        $qtyReturned = isset($item['quantity_returned']) ? $item['quantity_returned'] : 0;
+                                        $qtyAvailable = $item['quantity'] - $qtyReturned;
+                                        ?>
+                                        <?php if ($qtyAvailable > 0): ?>
+                                            <tr>
+                                                <td>
+                                                    <input type="checkbox" class="form-check-input return-checkbox" 
+                                                           name="return_item_ids[]" 
+                                                           value="<?php echo $item['id']; ?>"
+                                                           data-item-id="<?php echo $item['id']; ?>"
+                                                           data-max-qty="<?php echo $qtyAvailable; ?>"
+                                                           data-unit-price="<?php echo $item['unit_price']; ?>"
+                                                           data-item-discount="<?php echo isset($item['item_discount']) ? $item['item_discount'] : 0; ?>">
+                                                </td>
+                                                <td>
+                                                    <strong><?php echo sanitizeInput($item['product_name']); ?></strong><br>
+                                                    <small class="text-muted">Code: <?php echo sanitizeInput($item['barcode']); ?></small>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-primary"><?php echo $qtyAvailable; ?></span>
+                                                    <?php if ($qtyReturned > 0): ?>
+                                                        <br><small class="text-muted">(<?php echo $qtyReturned; ?> returned)</small>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <input type="number" class="form-control form-control-sm return-quantity" 
+                                                           name="return_quantities[<?php echo $item['id']; ?>]" 
+                                                           data-item-id="<?php echo $item['id']; ?>"
+                                                           min="1" 
+                                                           max="<?php echo $qtyAvailable; ?>" 
+                                                           value="<?php echo $qtyAvailable; ?>"
+                                                           style="width: 80px;"
+                                                           disabled>
+                                                </td>
+                                                <td><?php echo formatCurrency($item['unit_price']); ?></td>
+                                                <td>
+                                                    <span class="text-danger refund-amount" data-item-id="<?php echo $item['id']; ?>">
+                                                        <?php echo formatCurrency(0); ?>
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                </tbody>
+                                <tfoot>
+                                    <tr class="table-warning">
+                                        <td colspan="5" class="text-end"><strong>Total Refund Amount:</strong></td>
+                                        <td>
+                                            <strong class="text-danger" id="totalRefund"><?php echo formatCurrency(0); ?></strong>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Return Reason (Optional)</label>
+                            <textarea name="return_reason" class="form-control" rows="2" placeholder="e.g., Defective, Wrong item, Customer changed mind..."></textarea>
+                        </div>
+                        
+                        <div class="alert alert-warning" id="returnWarningItems">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Warning:</strong> This action will:
+                            <ul class="mb-0 mt-2">
+                                <li>Refund the selected items</li>
+                                <li>Update inventory stock</li>
+                                <li>Deduct from today's sales report</li>
+                                <li>This action cannot be undone</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-danger" id="submitReturn" disabled>
+                            <i class="fas fa-undo"></i> Process Return
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-md-4">
             <div class="card">
@@ -378,6 +656,12 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                             <td><strong>Total:</strong></td>
                             <td><strong><?php echo formatCurrency($calculatedGrandTotal); ?></strong></td>
                         </tr>
+                        <?php if ($orderDetails['refund_amount'] > 0): ?>
+<tr class="table-danger">
+    <td><strong>Total Refunded:</strong></td>
+    <td class="text-danger"><strong>-<?php echo formatCurrency($orderDetails['refund_amount']); ?></strong></td>
+</tr>
+<?php endif; ?>
                     </table>
                     
                     <?php if ($totalSavings > 0): ?>
@@ -399,32 +683,60 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
         
         <div class="col-md-8">
             <div class="card">
-                <div class="card-header">
-                    <h6 class="card-title mb-0">Order Items</h6>
-                </div>
+                <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="card-title mb-0">Order Items</h6>
+            <?php if ($orderDetails['status'] != 'returned'): ?>
+                <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#returnItemModal">
+                    <i class="fas fa-undo"></i> Return Item(s)
+                </button>
+            <?php endif; ?>
+        </div>
                 <div class="card-body">
                     <div class="table-responsive">
                         <table class="table">
                             <thead>
-                                <tr>
-                                    <th>Product</th>
-                                    <th>Barcode</th>
-                                    <th>Quantity</th>
-                                    <th>Unit Price</th>
-                                    <th>Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($orderItems as $item): ?>
-                                    <tr>
-                                        <td><?php echo sanitizeInput($item['product_name']); ?></td>
-                                        <td><code><?php echo sanitizeInput($item['barcode']); ?></code></td>
-                                        <td><?php echo $item['quantity']; ?></td>
-                                        <td><?php echo formatCurrency($item['unit_price']); ?></td>
-                                        <td><?php echo formatCurrency($item['total_price']); ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
+    <tr>
+        <th>Product</th>
+        <th>Barcode</th>
+        <th>Quantity</th>
+        <th>Returned</th>
+        <th>Unit Price</th>
+        <th>Total</th>
+        <th>Status</th>
+    </tr>
+</thead>
+<tbody>
+    <?php foreach ($orderItems as $item): ?>
+        <?php 
+        $qtyReturned = isset($item['quantity_returned']) ? $item['quantity_returned'] : 0;
+        $qtyRemaining = $item['quantity'] - $qtyReturned;
+        $isFullyReturned = $qtyRemaining <= 0;
+        ?>
+        <tr class="<?php echo $isFullyReturned ? 'table-danger' : ''; ?>">
+            <td><?php echo sanitizeInput($item['product_name']); ?></td>
+            <td><code><?php echo sanitizeInput($item['barcode']); ?></code></td>
+            <td><?php echo $item['quantity']; ?></td>
+            <td>
+                <?php if ($qtyReturned > 0): ?>
+                    <span class="badge bg-danger"><?php echo $qtyReturned; ?></span>
+                <?php else: ?>
+                    <span class="text-muted">0</span>
+                <?php endif; ?>
+            </td>
+            <td><?php echo formatCurrency($item['unit_price']); ?></td>
+            <td><?php echo formatCurrency($item['total_price']); ?></td>
+            <td>
+                <?php if ($isFullyReturned): ?>
+                    <span class="badge bg-danger">Fully Returned</span>
+                <?php elseif ($qtyReturned > 0): ?>
+                    <span class="badge bg-warning text-dark">Partially Returned</span>
+                <?php else: ?>
+                    <span class="badge bg-success">Active</span>
+                <?php endif; ?>
+            </td>
+        </tr>
+    <?php endforeach; ?>
+</tbody>
                         </table>
                     </div>
                 </div>
@@ -489,6 +801,52 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                 </div>
             <?php endif; ?>
         </form>
+        <!-- Show Returns History if exists -->
+                    <!-- Show Returns History if exists -->
+<?php
+if (isset($orderDetails) && !empty($orderDetails)) {
+    $returnsQuery = "SELECT r.*, p.name as product_name, u.full_name as returned_by_name 
+                   FROM order_returns r 
+                   JOIN products p ON r.product_id = p.id 
+                   JOIN users u ON r.returned_by = u.id 
+                   WHERE r.order_id = ? 
+                   ORDER BY r.return_date DESC";
+    $returns = executeQuery($returnsQuery, 'i', [$orderDetails['id']]);
+} else {
+    $returns = [];
+}
+?>
+                    
+                    <?php if (!empty($returns)): ?>
+                        <hr>
+                        <h6 class="mt-3"><i class="fas fa-history"></i> Return History</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Product</th>
+                                        <th>Quantity</th>
+                                        <th>Refund</th>
+                                        <th>Reason</th>
+                                        <th>Processed By</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($returns as $return): ?>
+                                        <tr>
+                                            <td><?php echo formatDate($return['return_date']); ?></td>
+                                            <td><?php echo sanitizeInput($return['product_name']); ?></td>
+                                            <td><?php echo $return['quantity_returned']; ?></td>
+                                            <td class="text-danger"><?php echo formatCurrency($return['refund_amount']); ?></td>
+                                            <td><?php echo !empty($return['reason']) ? sanitizeInput($return['reason']) : '-'; ?></td>
+                                            <td><?php echo sanitizeInput($return['returned_by_name']); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
     </div>
 </div>
     
@@ -622,6 +980,7 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
 <script>
 // This script should work on both order details and order list pages
 
+<?php if ($orderDetails): ?>
 // Global function to open status modal from list or details view
 function openStatusModal(orderId, currentStatus) {
     const modalOrderId = document.getElementById('modalOrderId');
@@ -657,7 +1016,109 @@ if (statusSelect) {
     });
 }
 
-// Dynamic filtering - trigger on period change
+// Return Item Modal Logic
+document.addEventListener('DOMContentLoaded', function() {
+    const returnCheckboxes = document.querySelectorAll('.return-checkbox');
+    const returnQuantities = document.querySelectorAll('.return-quantity');
+    const submitButton = document.getElementById('submitReturn');
+    const totalRefundElement = document.getElementById('totalRefund');
+    
+    // Only run if we have return elements
+    if (returnCheckboxes.length === 0) return;
+    
+    // Get discount and tax rates from PHP
+    const discountRate = <?php echo getSetting('discount_rate', 0); ?>;
+    const taxRate = <?php echo getSetting('tax_rate', 0.10); ?>;
+    
+    function calculateRefund() {
+        let totalRefund = 0;
+        let hasSelection = false;
+        
+        returnCheckboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                hasSelection = true;
+                const itemId = checkbox.dataset.itemId;
+                const qtyInput = document.querySelector(`.return-quantity[data-item-id="${itemId}"]`);
+                const qty = parseInt(qtyInput.value) || 0;
+                const unitPrice = parseFloat(checkbox.dataset.unitPrice);
+                const itemDiscount = parseFloat(checkbox.dataset.itemDiscount) || 0;
+                
+                // Calculate with item discount
+                const itemTotal = unitPrice * qty;
+                const itemDiscountAmount = itemTotal * (itemDiscount / 100);
+                const afterItemDiscount = itemTotal - itemDiscountAmount;
+                
+                // Apply cart discount
+                const cartDiscountAmount = afterItemDiscount * discountRate;
+                const afterCartDiscount = afterItemDiscount - cartDiscountAmount;
+                
+                // Apply tax
+                const taxAmount = afterCartDiscount * taxRate;
+                const refundAmount = afterCartDiscount + taxAmount;
+                
+                totalRefund += refundAmount;
+                
+                // Update individual refund display
+                const refundSpan = document.querySelector(`.refund-amount[data-item-id="${itemId}"]`);
+                if (refundSpan) {
+                    refundSpan.textContent = formatCurrency(refundAmount);
+                }
+            }
+        });
+        
+        // Update total
+        if (totalRefundElement) {
+            totalRefundElement.textContent = formatCurrency(totalRefund);
+        }
+        
+        // Enable/disable submit button
+        if (submitButton) {
+            submitButton.disabled = !hasSelection;
+        }
+    }
+    
+    // Enable/disable quantity input based on checkbox
+    returnCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const itemId = this.dataset.itemId;
+            const qtyInput = document.querySelector(`.return-quantity[data-item-id="${itemId}"]`);
+            const refundSpan = document.querySelector(`.refund-amount[data-item-id="${itemId}"]`);
+            
+            if (qtyInput) {
+                qtyInput.disabled = !this.checked;
+                if (!this.checked) {
+                    qtyInput.value = this.dataset.maxQty;
+                    if (refundSpan) {
+                        refundSpan.textContent = formatCurrency(0);
+                    }
+                }
+            }
+            
+            calculateRefund();
+        });
+    });
+    
+    // Recalculate when quantity changes
+    returnQuantities.forEach(input => {
+        input.addEventListener('input', calculateRefund);
+    });
+    
+    // Format currency helper
+    function formatCurrency(amount) {
+        return 'Rs ' + amount.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+    }
+    
+    // Initialize on modal show
+    const returnModal = document.getElementById('returnItemModal');
+    if (returnModal) {
+        returnModal.addEventListener('show.bs.modal', function() {
+            calculateRefund();
+        });
+    }
+});
+<?php endif; ?>
+
+// Dynamic filtering - trigger on period change (works on list page)
 const periodSelect = document.getElementById('period');
 if (periodSelect) {
     periodSelect.addEventListener('change', function() {

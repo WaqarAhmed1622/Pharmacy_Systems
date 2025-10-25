@@ -94,4 +94,13 @@ function executeNonQuery($query, $types = '', $params = []) {
     $conn->close();
     return false;
 }
+
+/**
+ * Get database connection (alias for getConnection for compatibility)
+ * @return mysqli Database connection object
+ */
+function getDBConnection() {
+    return getConnection();
+}
+
 ?>
