@@ -21,51 +21,14 @@ if (isset($_GET['export'])) {
 require_once '../includes/header.php';
 requireAdmin();
 
-$salesData = getSalesData($period, $customStart, $customEnd);
+$salesData = getSalesDataWithRefunds($period, $customStart, $customEnd);
 $topProducts = getTopProducts($period, $customStart, $customEnd);
 
-// Calculate actual profit using product cost prices
-$whereClause = '';
-$params = [];
-
-switch ($period) {
-    case 'today':
-        $whereClause = "WHERE DATE(o.order_date) = CURDATE() AND o.status != 'returned'";
-        break;
-    case 'yesterday':
-        $whereClause = "WHERE DATE(o.order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND o.status != 'returned'";
-        break;
-    case 'week':
-        $whereClause = "WHERE YEARWEEK(o.order_date) = YEARWEEK(CURDATE()) AND o.status != 'returned'";
-        break;
-    case 'month':
-        $whereClause = "WHERE MONTH(o.order_date) = MONTH(CURDATE()) AND YEAR(o.order_date) = YEAR(CURDATE()) AND o.status != 'returned'";
-        break;
-    case 'year':
-        $whereClause = "WHERE YEAR(o.order_date) = YEAR(CURDATE()) AND o.status != 'returned'";
-        break;
-    case 'custom':
-        if ($customStart && $customEnd) {
-            $whereClause = "WHERE DATE(o.order_date) BETWEEN ? AND ? AND o.status != 'returned'";
-            $params = [$customStart, $customEnd];
-        }
-        break;
-}
-
-// Calculate actual profit using product cost prices (excluding returned items)
-$costQuery = "SELECT 
-                COALESCE(SUM((oi.quantity - COALESCE(oi.quantity_returned, 0)) * p.cost), 0) as total_cost
-              FROM order_items oi
-              JOIN products p ON oi.product_id = p.id
-              JOIN orders o ON oi.order_id = o.id
-              $whereClause";
-
-$costResult = executeQuery($costQuery, str_repeat('s', count($params)), $params);
-$totalCost = $costResult ? $costResult[0]['total_cost'] : 0;
-
-// Net profit = Net sales - Total cost
-$totalProfit = $salesData['total_sales'] - $totalCost;
-$profitMargin = $salesData['total_sales'] > 0 ? (($totalProfit / $salesData['total_sales']) * 100) : 0;
+// Get profit data
+$profitData = getProfitData($period, $customStart, $customEnd);
+$totalCost = $profitData['total_cost'];
+$totalProfit = $profitData['net_profit'];
+$profitMargin = $profitData['profit_margin'];
 
 // Get daily sales for chart (last 30 days)
 // Get daily sales for chart (last 30 days) - Net sales (sales - refunds)
@@ -150,74 +113,13 @@ for ($i = 29; $i >= 0; $i--) {
 </div>
 
 
-<?php
-// Recalculate total sales with refunds deducted
-$whereClauseRefund = '';
-$paramsRefund = [];
-
-switch ($period) {
-    case 'today':
-        $whereClauseRefund = "WHERE DATE(order_date) = CURDATE()";
-        break;
-    case 'yesterday':
-        $whereClauseRefund = "WHERE DATE(order_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)";
-        break;
-    case 'week':
-        $whereClauseRefund = "WHERE YEARWEEK(order_date) = YEARWEEK(CURDATE())";
-        break;
-    case 'month':
-        $whereClauseRefund = "WHERE MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE())";
-        break;
-    case 'year':
-        $whereClauseRefund = "WHERE YEAR(order_date) = YEAR(CURDATE())";
-        break;
-    case 'custom':
-        if ($customStart && $customEnd) {
-            $whereClauseRefund = "WHERE DATE(order_date) BETWEEN ? AND ?";
-            $paramsRefund = [$customStart, $customEnd];
-        }
-        break;
-}
-
-// Get total sales (including all orders)
-$salesQuery = "SELECT 
-                COUNT(*) as total_orders,
-                COALESCE(SUM(total_amount), 0) as gross_sales,
-                COALESCE(SUM(refund_amount), 0) as total_refunds,
-                COALESCE(AVG(total_amount), 0) as avg_order_value
-              FROM orders 
-              $whereClauseRefund";
-
-$salesResult = executeQuery($salesQuery, str_repeat('s', count($paramsRefund)), $paramsRefund);
-$salesData = $salesResult ? $salesResult[0] : ['total_orders' => 0, 'gross_sales' => 0, 'total_refunds' => 0, 'avg_order_value' => 0];
-
-// Calculate net sales (gross sales - refunds)
-$salesData['total_sales'] = $salesData['gross_sales'] - $salesData['total_refunds'];
-$salesData['net_sales'] = $salesData['total_sales'];
-
-// Get total tax collected (excluding returned orders)
-$taxQuery = "SELECT COALESCE(SUM(tax_amount), 0) as total_tax
-             FROM orders 
-             $whereClause";
-$taxResult = executeQuery($taxQuery, str_repeat('s', count($params)), $params);
-$salesData['total_tax'] = $taxResult ? $taxResult[0]['total_tax'] : 0;
-
-// Get total subtotal (excluding returned orders)
-$subtotalQuery = "SELECT COALESCE(SUM(subtotal), 0) as total_subtotal
-                  FROM orders 
-                  $whereClause";
-$subtotalResult = executeQuery($subtotalQuery, str_repeat('s', count($params)), $params);
-$salesData['total_subtotal'] = $subtotalResult ? $subtotalResult[0]['total_subtotal'] : 0;
-?>
-
 <!-- Sales Statistics -->
 <div class="row mb-4">
     <div class="col-md-3 mb-3">
         <div class="card stats-card h-100">
             <div class="card-body text-center">
                 <i class="fas fa-dollar-sign fa-2x mb-2"></i>
-                <h4 class="card-title"><?php echo formatCurrency($salesData['total_sales']); ?></h4>
-                <p class="card-text">Total Sales</p>
+                <h4 class="card-title"><?php echo formatCurrency($salesData['net_sales']); ?></h4>            <p class="card-text">Total Sales</p>
             </div>
         </div>
     </div>
@@ -373,16 +275,7 @@ $salesData['total_subtotal'] = $subtotalResult ? $subtotalResult[0]['total_subto
                         break;
                 }
                 
-                $paymentQuery = "SELECT 
-                    payment_method,
-                    COUNT(*) as count,
-                    COALESCE(SUM(total_amount - refund_amount), 0) as total
-                FROM orders 
-                $whereClauseRefund
-                GROUP BY payment_method
-                ORDER BY total DESC";
-
-$paymentMethods = executeQuery($paymentQuery, str_repeat('s', count($paramsRefund)), $paramsRefund);
+                $paymentMethods = getPaymentMethodsBreakdown($period, $customStart, $customEnd);
                 ?>
                 
                 <?php if (empty($paymentMethods)): ?>
@@ -450,7 +343,7 @@ $paymentMethods = executeQuery($paymentQuery, str_repeat('s', count($paramsRefun
                         <strong class="text-success">
                             <?php 
                             // Calculate estimated profit (this is a rough estimate)
-                            $estimatedProfit = $salesData['total_subtotal'] * 0.3; // Assuming 30% margin
+                            $estimatedProfit = $salesData['net_sales'] * 0.3; // Assuming 30% margin
                             echo formatCurrency($estimatedProfit);
                             ?>
                         </strong>
@@ -500,7 +393,7 @@ $paymentMethods = executeQuery($paymentQuery, str_repeat('s', count($paramsRefun
     <div class="alert alert-warning">
         <i class="fas fa-info-circle"></i> 
         <strong>Note:</strong> Total refunds of <?php echo formatCurrency($salesData['total_refunds']); ?> 
-        have been deducted from gross sales to show net sales of <?php echo formatCurrency($salesData['total_sales']); ?>.
+        have been deducted from gross sales to show net sales of <?php echo formatCurrency($salesData['net_sales']); ?>
     </div>
 </div>
 <?php endif; ?>
