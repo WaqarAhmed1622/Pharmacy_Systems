@@ -43,7 +43,11 @@ if (isset($_POST['ajax_search'])) {
     $expiry_status = isset($_POST['expiry_status']) ? sanitizeInput($_POST['expiry_status']) : '';
     $price_range = isset($_POST['price_range']) ? sanitizeInput($_POST['price_range']) : '';
     $non_selling = isset($_POST['non_selling']) ? (int)$_POST['non_selling'] : 0;
-
+    
+    // PAGINATION FOR AJAX
+    $page = isset($_POST['page']) ? max(1, (int)$_POST['page']) : 1;
+    $limit = 20;
+    $offset = ($page - 1) * $limit;
     $whereParts = [];
     $params = [];
     $types = '';
@@ -148,11 +152,24 @@ if (isset($_POST['ajax_search'])) {
         $whereClause = "WHERE " . implode(" AND ", $whereParts);
     }
 
+    // Get total count
+    $countQuery = "SELECT COUNT(*) as total 
+                   FROM products p 
+                   LEFT JOIN categories c ON p.category_id = c.id 
+                   $nonSellingJoin
+                   $whereClause";
+    $countResult = executeQuery($countQuery, $types, $params);
+    $totalProducts = (!empty($countResult) && isset($countResult[0])) ? $countResult[0]['total'] : 0;
+    $totalPages = ceil($totalProducts / $limit);
+
+    // Get products with pagination
     $query = "SELECT p.*, c.name as category_name 
               FROM products p 
               LEFT JOIN categories c ON p.category_id = c.id 
+              $nonSellingJoin
               $whereClause
-              ORDER BY p.name";
+              ORDER BY p.name
+              LIMIT $limit OFFSET $offset";
 
     $searchResults = executeQuery($query, $types, $params);
 
@@ -161,7 +178,9 @@ if (isset($_POST['ajax_search'])) {
         $searchResults = [];
     }
 
-    // Return only the table body HTML
+    // Return table body + pagination
+    ob_start();
+    
     if (empty($searchResults)) {
         echo '<tr>
                 <td colspan="11" class="text-center py-4">
@@ -198,7 +217,6 @@ if (isset($_POST['ajax_search'])) {
             echo '</td>';
             echo '<td>';
             if ($prod['is_active']) {
-                // Stock status
                 if ($prod['stock_quantity'] <= 0) {
                     echo '<span class="badge bg-danger">Out of Stock</span>';
                 } elseif ($prod['stock_quantity'] <= $prod['min_stock_level']) {
@@ -208,7 +226,6 @@ if (isset($_POST['ajax_search'])) {
                 }
                 echo '<br>';
                 
-                // Expiry status
                 $expiryStatus = getExpiryStatus($prod['expiry_date']);
                 if ($expiryStatus['status'] !== 'none') {
                     echo '<span class="badge ' . $expiryStatus['class'] . ' mt-1">';
@@ -228,15 +245,13 @@ if (isset($_POST['ajax_search'])) {
             echo '</a>';
 
             if ($prod['is_active']) {
-                // Disable button for active products
                 echo '<form method="POST" class="d-inline">';
                 echo '<input type="hidden" name="product_id" value="' . $prod['id'] . '">';
-                echo '<button type="submit" name="toggle_product" value="disable" class="btn btn-outline-warning" onclick="return confirm(\'Disable this product? It will be hidden from active lists but history remains.\')" title="Disable Product">';
+                echo '<button type="submit" name="toggle_product" value="disable" class="btn btn-outline-warning" onclick="return confirm(\'Disable this product?\')" title="Disable Product">';
                 echo '<i class="fas fa-ban"></i>';
                 echo '</button>';
                 echo '</form>';
             } else {
-                // Enable button for disabled products
                 echo '<form method="POST" class="d-inline">';
                 echo '<input type="hidden" name="product_id" value="' . $prod['id'] . '">';
                 echo '<button type="submit" name="toggle_product" value="enable" class="btn btn-outline-success" onclick="return confirm(\'Enable this product?\')" title="Enable Product">';
@@ -244,8 +259,7 @@ if (isset($_POST['ajax_search'])) {
                 echo '</button>';
                 echo '</form>';
                 
-                // Delete button (hard delete) - only for disabled products
-                echo '<form method="POST" class="d-inline" onsubmit="return confirm(\'Are you sure you want to permanently delete this product? This cannot be undone!\')">';
+                echo '<form method="POST" class="d-inline" onsubmit="return confirm(\'Permanently delete?\')">';
                 echo '<input type="hidden" name="product_id" value="' . $prod['id'] . '">';
                 echo '<button type="submit" name="hard_delete_product" class="btn btn-outline-danger" title="Permanently Delete">';
                 echo '<i class="fas fa-trash"></i>';
@@ -258,6 +272,55 @@ if (isset($_POST['ajax_search'])) {
             echo '</tr>';
         }
     }
+    
+    $tableBody = ob_get_clean();
+    
+    // Build pagination HTML
+    $paginationHtml = '';
+if ($totalPages > 1) {
+    $paginationHtml .= '<nav aria-label="Products pagination" class="mt-4">';
+    $paginationHtml .= '<ul class="pagination justify-content-center">';
+    
+    if ($page > 1) {
+        $paginationHtml .= '<li class="page-item">';
+        $paginationHtml .= '<a class="page-link ajax-page-link" data-page="' . ($page - 1) . '" href="#">Previous</a>';
+        $paginationHtml .= '</li>';
+    }
+    
+    $start = max(1, $page - 2);
+    $end = min($totalPages, $page + 2);
+    
+    for ($i = $start; $i <= $end; $i++) {
+        $active = $i == $page ? 'active' : '';
+        $paginationHtml .= '<li class="page-item ' . $active . '">';
+        $paginationHtml .= '<a class="page-link ajax-page-link" data-page="' . $i . '" href="#">' . $i . '</a>';
+        $paginationHtml .= '</li>';
+    }
+    
+    if ($page < $totalPages) {
+        $paginationHtml .= '<li class="page-item">';
+        $paginationHtml .= '<a class="page-link ajax-page-link" data-page="' . ($page + 1) . '" href="#">Next</a>';
+        $paginationHtml .= '</li>';
+    }
+    
+    $paginationHtml .= '</ul>';
+    $paginationHtml .= '</nav>';
+    
+    $paginationHtml .= '<div class="text-center mt-3">';
+    $paginationHtml .= '<small class="text-muted">';
+    $paginationHtml .= 'Showing page ' . $page . ' of ' . $totalPages . ' (' . $totalProducts . ' total products)';
+    $paginationHtml .= '</small>';
+    $paginationHtml .= '</div>';
+}
+    
+    // Return JSON response
+    echo json_encode([
+        'tableBody' => $tableBody,
+        'pagination' => $paginationHtml,
+        'totalProducts' => $totalProducts,
+        'currentPage' => $page,
+        'totalPages' => $totalPages
+    ]);
     exit;
 }
 
@@ -387,6 +450,7 @@ if ($action == 'edit' && $productId) {
     }
 }
 // Get all products for listing with advanced search functionality
+// Get all products for listing with advanced search functionality
 if ($action == 'list') {
     $search = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
     $category_filter = isset($_GET['category']) ? (int)$_GET['category'] : 0;
@@ -397,10 +461,16 @@ if ($action == 'list') {
     $price_range = isset($_GET['price_range']) ? sanitizeInput($_GET['price_range']) : '';
     $non_selling = isset($_GET['non_selling']) ? (int)$_GET['non_selling'] : 0;
 
+    
+
+    // ===== PAGINATION SETTINGS =====
+    $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+    $limit = 20;
+    $offset = ($page - 1) * $limit;
+
     $whereParts = [];
     $params = [];
     $types = '';
-    $havingParts = [];
 
     // Active/Disabled filter
     if ($show_disabled) {
@@ -483,11 +553,6 @@ if ($action == 'list') {
         }
     }
 
-    $whereClause = '';
-    if (!empty($whereParts)) {
-        $whereClause = "WHERE " . implode(" AND ", $whereParts);
-    }
-
     // Non-selling items filter (requires subquery)
     $nonSellingJoin = '';
     if ($non_selling > 0) {
@@ -500,17 +565,31 @@ if ($action == 'list') {
             GROUP BY oi.product_id
         ) recent_sales ON p.id = recent_sales.product_id";
         $whereParts[] = "recent_sales.product_id IS NULL";
-        
-        // Rebuild WHERE clause
+    }
+
+    $whereClause = '';
+    if (!empty($whereParts)) {
         $whereClause = "WHERE " . implode(" AND ", $whereParts);
     }
 
+    // ===== GET TOTAL COUNT FIRST =====
+    $countQuery = "SELECT COUNT(*) as total 
+                   FROM products p 
+                   LEFT JOIN categories c ON p.category_id = c.id 
+                   $nonSellingJoin
+                   $whereClause";
+    $countResult = executeQuery($countQuery, $types, $params);
+    $totalProducts = (!empty($countResult) && isset($countResult[0])) ? $countResult[0]['total'] : 0;
+    $totalPages = ceil($totalProducts / $limit);
+
+    // ===== GET PAGINATED PRODUCTS =====
     $query = "SELECT p.*, c.name as category_name 
               FROM products p 
               LEFT JOIN categories c ON p.category_id = c.id 
               $nonSellingJoin
               $whereClause
-              ORDER BY p.name";
+              ORDER BY p.name
+              LIMIT $limit OFFSET $offset";
 
     $products = executeQuery($query, $types, $params);
 
@@ -518,7 +597,6 @@ if ($action == 'list') {
     if ($products === false || $products === null) {
         $products = [];
     } elseif ($products instanceof mysqli_result) {
-        // in case executeQuery returns mysqli_result (unlikely with helper), convert
         $tmp = [];
         while ($row = $products->fetch_assoc()) {
             $tmp[] = $row;
@@ -547,6 +625,99 @@ if ($action == 'list') {
 
 <?php if ($action == 'list'): ?>
     <!-- Products List View -->
+     <style>
+    /* Pagination Styles - Applied to both server and AJAX pagination */
+    .pagination {
+        display: flex;
+        padding-left: 0;
+        list-style: none;
+        border-radius: 0.375rem;
+    }
+    
+    .page-item:not(:first-child) .page-link {
+        margin-left: -1px;
+    }
+    
+    .page-link {
+        position: relative;
+        display: block;
+        color: #667eea;
+        text-decoration: none;
+        background-color: #fff;
+        border: 1px solid #dee2e6;
+        padding: 0.5rem 0.75rem;
+        transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out;
+        cursor: pointer;
+    }
+    
+    .page-link:hover {
+        z-index: 2;
+        color: #5568d3;
+        background-color: #e9ecef;
+        border-color: #dee2e6;
+    }
+    
+    .page-link:focus {
+        z-index: 3;
+        color: #5568d3;
+        background-color: #e9ecef;
+        outline: 0;
+        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+    }
+    
+    .page-item.active .page-link {
+        z-index: 3;
+        color: #fff;
+        background-color: #667eea;
+        border-color: #667eea;
+    }
+    
+    .page-item.disabled .page-link {
+        color: #6c757d;
+        pointer-events: none;
+        background-color: #fff;
+        border-color: #dee2e6;
+    }
+    
+    .page-item:first-child .page-link {
+        border-top-left-radius: 0.375rem;
+        border-bottom-left-radius: 0.375rem;
+    }
+    
+    .page-item:last-child .page-link {
+        border-top-right-radius: 0.375rem;
+        border-bottom-right-radius: 0.375rem;
+    }
+    
+    .pagination-sm .page-link {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+    
+    /* Filter styles */
+    .filter-select {
+        font-size: 0.9rem;
+    }
+    
+    #filtersSection {
+        transition: all 0.3s ease;
+    }
+    
+    .form-label {
+        font-weight: 500;
+        font-size: 0.875rem;
+        margin-bottom: 0.25rem;
+    }
+    
+    .badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+    
+    #resultsCount strong {
+        color: #667eea;
+    }
+    </style>
     <!-- Search and Filter Section -->
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
@@ -558,7 +729,7 @@ if ($action == 'list') {
             </button>
         </div>
         <div class="card-body" id="filtersSection">
-            <form method="GET" id="searchForm">
+            <form id="searchForm">
                 <input type="hidden" name="action" value="list">
                 
                 <!-- Row 1: Basic Search -->
@@ -685,7 +856,6 @@ if ($action == 'list') {
             <div class="mt-3 pt-3 border-top">
                 <small class="text-muted" id="resultsCount">
                     <?php 
-                    $totalProducts = is_array($products) ? count($products) : 0;
                     $activeFilters = [];
                     
                     if (isset($_GET['search']) && !empty($_GET['search'])) {
@@ -890,15 +1060,60 @@ if ($action == 'list') {
                         <?php endif; ?>
                     </tbody>
                 </table>
+           </div>
+            <div id="serverPagination">
+                <?php if ($action == 'list' && $totalPages > 1): ?>
+                    <nav aria-label="Products pagination" class="mt-4">
+                        <ul class="pagination justify-content-center">
+                            <?php if ($page > 1): ?>
+                                <li class="page-item">
+                                    <a class="page-link" href="?action=list&page=<?php echo $page - 1; ?>&search=<?php echo urlencode($search); ?>&category=<?php echo $category_filter; ?>&stock_status=<?php echo $stock_status; ?>&manufacturer=<?php echo urlencode($manufacturer); ?>&expiry_status=<?php echo $expiry_status; ?>&price_range=<?php echo $price_range; ?>&non_selling=<?php echo $non_selling; ?>&show_disabled=<?php echo $show_disabled; ?>">
+                                        Previous
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+
+                            <?php
+                            $start = max(1, $page - 2);
+                            $end = min($totalPages, $page + 2);
+
+                            for ($i = $start; $i <= $end; $i++): ?>
+                                <li class="page-item <?php echo $i == $page ? 'active' : ''; ?>">
+                                    <a class="page-link" href="?action=list&page=<?php echo $i; ?>&search=<?php echo urlencode($search); ?>&category=<?php echo $category_filter; ?>&stock_status=<?php echo $stock_status; ?>&manufacturer=<?php echo urlencode($manufacturer); ?>&expiry_status=<?php echo $expiry_status; ?>&price_range=<?php echo $price_range; ?>&non_selling=<?php echo $non_selling; ?>&show_disabled=<?php echo $show_disabled; ?>">
+                                        <?php echo $i; ?>
+                                    </a>
+                                </li>
+                            <?php endfor; ?>
+
+                            <?php if ($page < $totalPages): ?>
+                                <li class="page-item">
+                                    <a class="page-link" href="?action=list&page=<?php echo $page + 1; ?>&search=<?php echo urlencode($search); ?>&category=<?php echo $category_filter; ?>&stock_status=<?php echo $stock_status; ?>&manufacturer=<?php echo urlencode($manufacturer); ?>&expiry_status=<?php echo $expiry_status; ?>&price_range=<?php echo $price_range; ?>&non_selling=<?php echo $non_selling; ?>&show_disabled=<?php echo $show_disabled; ?>">
+                                        Next
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+                        </ul>
+                    </nav>
+                    
+                    <div class="text-center mt-3">
+                        <small class="text-muted">
+                            Showing page <?php echo $page; ?> of <?php echo $totalPages; ?> 
+                            (<?php echo $totalProducts; ?> total products)
+                        </small>
+                    </div>
+                <?php endif; ?>
             </div>
+            
+            <!-- AJAX Pagination Container (shown during live search) -->
+            <div id="ajaxPagination" style="display: none;"></div>
         </div>
     </div>
+<script>
+// Live search with pagination
+let searchTimeout;
+let currentPage = 1;
 
-    <script>
-    // Simple live search functionality with show_disabled support
-    let searchTimeout;
-
-    function performSearch() {
+function performSearch(page = 1) {
     const searchTerm = document.getElementById('searchInput').value;
     const categoryId = document.getElementById('categoryFilter').value;
     const showDisabled = document.getElementById('showDisabled').checked ? '1' : '0';
@@ -909,117 +1124,151 @@ if ($action == 'list') {
     const nonSelling = document.getElementById('nonSellingFilter').value;
 
     clearTimeout(searchTimeout);
+    currentPage = page;
+
+    // Hide server pagination, show AJAX pagination
+    const serverPagination = document.getElementById('serverPagination');
+    const ajaxPagination = document.getElementById('ajaxPagination');
+    if (serverPagination) serverPagination.style.display = 'none';
+    if (ajaxPagination) ajaxPagination.style.display = 'block';
 
     searchTimeout = setTimeout(function() {
-        // Trigger search if any filter is active
-        const hasActiveFilter = searchTerm.length >= 2 || categoryId || stockStatus || 
-                               manufacturer || expiryStatus || priceRange || nonSelling ||
-                               searchTerm.length === 0 || showDisabled === '1';
+        // Show loading
+        document.getElementById('productsTableBody').innerHTML = 
+            '<tr><td colspan="11" class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i><br><small class="text-muted mt-2">Loading products...</small></td></tr>';
         
-        if (hasActiveFilter) {
-            // Show loading
-            document.getElementById('productsTableBody').innerHTML = 
-                '<tr><td colspan="11" class="text-center py-4"><i class="fas fa-spinner fa-spin"></i> Searching...</td></tr>';
-
-            // Create form data
-            const formData = new FormData();
-            formData.append('ajax_search', '1');
-            formData.append('search', searchTerm);
-            formData.append('category', categoryId);
-            formData.append('show_disabled', showDisabled);
-            formData.append('stock_status', stockStatus);
-            formData.append('manufacturer', manufacturer);
-            formData.append('expiry_status', expiryStatus);
-            formData.append('price_range', priceRange);
-            formData.append('non_selling', nonSelling);
-
-            // Send request
-            fetch(window.location.pathname + window.location.search, {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.text())
-            .then(data => {
-                document.getElementById('productsTableBody').innerHTML = data;
-
-                // Update counter with active filters
-                const rows = document.querySelectorAll('.product-row');
-                let activeFilters = [];
-                
-                if (searchTerm) activeFilters.push('search: "' + searchTerm + '"');
-                if (categoryId) {
-                    const catSelect = document.getElementById('categoryFilter');
-                    activeFilters.push('category: ' + catSelect.options[catSelect.selectedIndex].text);
-                }
-                if (stockStatus) activeFilters.push('stock: ' + stockStatus.replace('_', ' '));
-                if (manufacturer) activeFilters.push('manufacturer: ' + manufacturer);
-                if (expiryStatus) activeFilters.push('expiry: ' + expiryStatus.replace('_', ' '));
-                if (priceRange) activeFilters.push('price: Rs ' + priceRange);
-                if (nonSelling) activeFilters.push('non-selling: ' + nonSelling + ' days');
-                if (showDisabled === '1') activeFilters.push('showing disabled');
-                
-                let countText = 'Found <strong>' + rows.length + '</strong> products';
-                if (activeFilters.length > 0) {
-                    countText += ' | Filters: ' + activeFilters.join(', ');
-                }
-                
-                document.getElementById('resultsCount').innerHTML = countText;
-            })
-            .catch(error => {
-                document.getElementById('productsTableBody').innerHTML = 
-                    '<tr><td colspan="11" class="text-center py-4 text-danger"><i class="fas fa-exclamation-triangle"></i> Search error. Please try again.</td></tr>';
-            });
+        if (ajaxPagination) {
+            ajaxPagination.innerHTML = '';
         }
+
+        // Create form data
+        const formData = new FormData();
+        formData.append('ajax_search', '1');
+        formData.append('search', searchTerm);
+        formData.append('category', categoryId);
+        formData.append('show_disabled', showDisabled);
+        formData.append('stock_status', stockStatus);
+        formData.append('manufacturer', manufacturer);
+        formData.append('expiry_status', expiryStatus);
+        formData.append('price_range', priceRange);
+        formData.append('non_selling', nonSelling);
+        formData.append('page', page);
+
+        // Send request
+        fetch(window.location.pathname, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('productsTableBody').innerHTML = data.tableBody;
+            
+            // Update pagination
+            if (ajaxPagination) {
+                ajaxPagination.innerHTML = data.pagination;
+                
+                // Add click handlers to pagination links
+                document.querySelectorAll('.ajax-page-link').forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const page = parseInt(this.getAttribute('data-page'));
+                        performSearch(page);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    });
+                });
+            }
+
+            // Update counter
+            let activeFilters = [];
+            if (searchTerm) activeFilters.push('search: "' + searchTerm + '"');
+            if (categoryId) {
+                const catSelect = document.getElementById('categoryFilter');
+                activeFilters.push('category: ' + catSelect.options[catSelect.selectedIndex].text);
+            }
+            if (stockStatus) activeFilters.push('stock: ' + stockStatus.replace(/_/g, ' '));
+            if (manufacturer) activeFilters.push('manufacturer: ' + manufacturer);
+            if (expiryStatus) activeFilters.push('expiry: ' + expiryStatus.replace(/_/g, ' '));
+            if (priceRange) activeFilters.push('price: Rs ' + priceRange);
+            if (nonSelling) activeFilters.push('non-selling: ' + nonSelling + ' days');
+            if (showDisabled === '1') activeFilters.push('showing disabled');
+            
+            let countText = 'Found <strong>' + data.totalProducts + '</strong> products';
+            if (activeFilters.length > 0) {
+                countText += ' | Filters: ' + activeFilters.join(', ');
+            }
+            
+            document.getElementById('resultsCount').innerHTML = countText;
+        })
+        .catch(error => {
+            console.error('Search error:', error);
+            document.getElementById('productsTableBody').innerHTML = 
+                '<tr><td colspan="11" class="text-center py-4 text-danger"><i class="fas fa-exclamation-triangle fa-2x"></i><br><strong>Error loading products</strong><br><small>Please try again</small></td></tr>';
+        });
     }, 300);
 }
-    // Add event listeners for all filter dropdowns
-document.getElementById('searchInput').addEventListener('input', performSearch);
-document.getElementById('categoryFilter').addEventListener('change', performSearch);
-document.getElementById('showDisabled').addEventListener('change', function() {
-    // submit the GET form to persist show_disabled in URL
-    document.getElementById('searchForm').submit();
-});
 
-// Add event listeners for new filters
-document.getElementById('stockStatusFilter').addEventListener('change', performSearch);
-document.getElementById('manufacturerFilter').addEventListener('change', performSearch);
-document.getElementById('expiryStatusFilter').addEventListener('change', performSearch);
-document.getElementById('priceRangeFilter').addEventListener('change', performSearch);
-document.getElementById('nonSellingFilter').addEventListener('change', performSearch);
-
-// Clear filters button
-document.getElementById('clearFilters').addEventListener('click', function() {
-    // Clear all form inputs
-    document.getElementById('searchInput').value = '';
-    document.getElementById('categoryFilter').selectedIndex = 0;
-    document.getElementById('stockStatusFilter').selectedIndex = 0;
-    document.getElementById('manufacturerFilter').selectedIndex = 0;
-    document.getElementById('expiryStatusFilter').selectedIndex = 0;
-    document.getElementById('priceRangeFilter').selectedIndex = 0;
-    document.getElementById('nonSellingFilter').selectedIndex = 0;
-    document.getElementById('showDisabled').checked = false;
+// Check if filters are active on page load
+function checkFiltersOnLoad() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasFilters = urlParams.get('search') || 
+                      urlParams.get('category') || 
+                      urlParams.get('stock_status') || 
+                      urlParams.get('manufacturer') || 
+                      urlParams.get('expiry_status') || 
+                      urlParams.get('price_range') || 
+                      urlParams.get('non_selling') || 
+                      urlParams.get('show_disabled');
     
-    // Redirect to clean URL
-    window.location.href = '?action=list';
-});
-
-// Toggle filters visibility
-document.getElementById('toggleFilters').addEventListener('click', function() {
-    const filtersSection = document.getElementById('filtersSection');
-    const icon = this.querySelector('i');
-    
-    if (filtersSection.style.display === 'none') {
-        filtersSection.style.display = 'block';
-        icon.classList.remove('fa-chevron-down');
-        icon.classList.add('fa-chevron-up');
-    } else {
-        filtersSection.style.display = 'none';
-        icon.classList.remove('fa-chevron-up');
-        icon.classList.add('fa-chevron-down');
+    // If filters are active, trigger AJAX search immediately
+    if (hasFilters) {
+        const page = parseInt(urlParams.get('page')) || 1;
+        performSearch(page);
     }
-});
-   </script>
+}
 
+// Wait for DOM to be ready
+document.addEventListener('DOMContentLoaded', function() {
+    // Add event listeners for live search
+    document.getElementById('searchInput').addEventListener('input', () => performSearch(1));
+    document.getElementById('categoryFilter').addEventListener('change', () => performSearch(1));
+    document.getElementById('stockStatusFilter').addEventListener('change', () => performSearch(1));
+    document.getElementById('manufacturerFilter').addEventListener('change', () => performSearch(1));
+    document.getElementById('expiryStatusFilter').addEventListener('change', () => performSearch(1));
+    document.getElementById('priceRangeFilter').addEventListener('change', () => performSearch(1));
+    document.getElementById('nonSellingFilter').addEventListener('change', () => performSearch(1));
+    document.getElementById('showDisabled').addEventListener('change', () => performSearch(1));
+
+    // Prevent form submission, use AJAX instead
+    document.getElementById('searchForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        performSearch(1);
+    });
+
+    // Clear filters button
+    document.getElementById('clearFilters').addEventListener('click', function() {
+        window.location.href = '?action=list';
+    });
+
+    // Toggle filters button
+    document.getElementById('toggleFilters').addEventListener('click', function() {
+        const filtersSection = document.getElementById('filtersSection');
+        const icon = this.querySelector('i');
+        
+        if (filtersSection.style.display === 'none') {
+            filtersSection.style.display = 'block';
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-up');
+        } else {
+            filtersSection.style.display = 'none';
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+        }
+    });
+
+    // Check if we need to load filters on page load
+    checkFiltersOnLoad();
+});
+</script>
     <?php if ($success && strpos($success, 'added successfully') !== false): ?>
     <script>
         // Auto-scroll to top to show success message
@@ -1034,6 +1283,7 @@ document.getElementById('toggleFilters').addEventListener('click', function() {
             }
         }, 5000);
     </script>
+    
     <?php endif; ?>
 
 <?php elseif ($action == 'add' || $action == 'edit'): ?>

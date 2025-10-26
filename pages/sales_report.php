@@ -395,7 +395,7 @@ for ($i = 29; $i >= 0; $i--) {
         <strong>Note:</strong> Total refunds of <?php echo formatCurrency($salesData['total_refunds']); ?> 
         have been deducted from gross sales to show net sales of <?php echo formatCurrency($salesData['net_sales']); ?>
     </div>
-</div>
+</div>  
 <?php endif; ?>
                 </div>
             </div>

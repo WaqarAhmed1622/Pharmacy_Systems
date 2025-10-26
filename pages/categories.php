@@ -75,12 +75,26 @@ if ($action == 'edit' && $categoryId) {
 }
 
 // Get all categories for listing
+// Get all categories for listing
 if ($action == 'list') {
+    // Pagination settings
+    $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+    $limit = 20; // Categories per page
+    $offset = ($page - 1) * $limit;
+    
+    // Get total count
+    $countQuery = "SELECT COUNT(*) as total FROM categories";
+    $countResult = executeQuery($countQuery);
+    $totalCategories = (!empty($countResult) && isset($countResult[0])) ? $countResult[0]['total'] : 0;
+    $totalPages = ceil($totalCategories / $limit);
+    
+    // Get categories with pagination
     $categoriesQuery = "SELECT c.*, COUNT(p.id) as product_count 
                        FROM categories c 
                        LEFT JOIN products p ON c.id = p.category_id 
                        GROUP BY c.id 
-                       ORDER BY c.name";
+                       ORDER BY c.name
+                       LIMIT $limit OFFSET $offset";
     $categories = executeQuery($categoriesQuery);
 }
 ?>
@@ -165,8 +179,47 @@ if ($action == 'list') {
                         </table>
                     </div>
                 </div>
+                <?php if ($totalPages > 1): ?>
+            <nav aria-label="Categories pagination" class="mt-4">
+                <ul class="pagination justify-content-center">
+                    <?php if ($page > 1): ?>
+                        <li class="page-item">
+                            <a class="page-link" href="?action=list&page=<?php echo $page - 1; ?>">
+                                Previous
+                            </a>
+                        </li>
+                    <?php endif; ?>
+
+                    <?php
+                    $start = max(1, $page - 2);
+                    $end = min($totalPages, $page + 2);
+
+                    for ($i = $start; $i <= $end; $i++): ?>
+                        <li class="page-item <?php echo $i == $page ? 'active' : ''; ?>">
+                            <a class="page-link" href="?action=list&page=<?php echo $i; ?>">
+                                <?php echo $i; ?>
+                            </a>
+                        </li>
+                    <?php endfor; ?>
+
+                    <?php if ($page < $totalPages): ?>
+                        <li class="page-item">
+                            <a class="page-link" href="?action=list&page=<?php echo $page + 1; ?>">
+                                Next
+                            </a>
+                        </li>
+                    <?php endif; ?>
+                </ul>
+            </nav>
+            
+            <div class="text-center mt-3">
+                <small class="text-muted">
+                    Showing page <?php echo $page; ?> of <?php echo $totalPages; ?> 
+                    (<?php echo $totalCategories; ?> total categories)
+                </small>
             </div>
-        </div>
+        <?php endif; ?>
+    </div>
         
         <div class="col-md-4">
             <div class="card">
@@ -359,5 +412,75 @@ if ($action == 'list') {
         </div>
     </div>
 <?php endif; ?>
+
+<style>
+/* Pagination styles */
+.pagination {
+    display: flex;
+    padding-left: 0;
+    list-style: none;
+    border-radius: 0.375rem;
+}
+
+.page-item:not(:first-child) .page-link {
+    margin-left: -1px;
+}
+
+.page-link {
+    position: relative;
+    display: block;
+    color: #667eea;
+    text-decoration: none;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    padding: 0.5rem 0.75rem;
+    transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out;
+    cursor: pointer;
+}
+
+.page-link:hover {
+    z-index: 2;
+    color: #5568d3;
+    background-color: #e9ecef;
+    border-color: #dee2e6;
+}
+
+.page-link:focus {
+    z-index: 3;
+    color: #5568d3;
+    background-color: #e9ecef;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.page-item.active .page-link {
+    z-index: 3;
+    color: #fff;
+    background-color: #667eea;
+    border-color: #667eea;
+}
+
+.page-item.disabled .page-link {
+    color: #6c757d;
+    pointer-events: none;
+    background-color: #fff;
+    border-color: #dee2e6;
+}
+
+.page-item:first-child .page-link {
+    border-top-left-radius: 0.375rem;
+    border-bottom-left-radius: 0.375rem;
+}
+
+.page-item:last-child .page-link {
+    border-top-right-radius: 0.375rem;
+    border-bottom-right-radius: 0.375rem;
+}
+
+.pagination-sm .page-link {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+</style>
 
 <?php require_once '../includes/footer.php'; ?>

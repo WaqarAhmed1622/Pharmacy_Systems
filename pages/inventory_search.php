@@ -1,6 +1,6 @@
 <?php
 require_once '../config/database.php';
-require_once '../includes/functions.php'; // for sanitizeInput(), executeQuery()
+require_once '../includes/functions.php';
 
 if (!isset($_GET['query'])) {
     echo '';
@@ -9,7 +9,6 @@ if (!isset($_GET['query'])) {
 
 $search = "%" . sanitizeInput($_GET['query']) . "%";
 
-// 
 $products = executeQuery("
     SELECT p.*, c.name as category_name 
     FROM products p 
@@ -48,9 +47,10 @@ foreach ($products as $product) {
             <?php endif; ?>
         </td>
         <td>
-            <button type="button" class="btn btn-outline-primary btn-sm" 
-                    data-bs-toggle="modal" 
-                    data-bs-target="#stockModal<?php echo $product['id']; ?>">
+            <button type="button" class="btn btn-outline-primary btn-sm update-stock-btn" 
+                    data-product-id="<?php echo $product['id']; ?>"
+                    data-product-name="<?php echo htmlspecialchars($product['name']); ?>"
+                    data-current-stock="<?php echo $product['stock_quantity']; ?>">
                 <i class="fas fa-edit"></i> Update Stock
             </button>
         </td>
