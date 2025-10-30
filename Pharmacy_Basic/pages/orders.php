@@ -286,8 +286,7 @@ $orderItems = [];
 if (isset($_GET['view']) && is_numeric($_GET['view'])) {
     $orderId = (int)$_GET['view'];
     
-    $detailQuery = "SELECT o.*, u.full_name as cashier_name,
-                    o.order_type, o.delivery_charge
+    $detailQuery = "SELECT o.*, u.full_name as cashier_name
                     FROM orders o 
                     JOIN users u ON o.cashier_id = u.id 
                     WHERE o.id = ?";
@@ -297,7 +296,7 @@ if (isset($_GET['view']) && is_numeric($_GET['view'])) {
     if (!empty($detailResult) && isset($detailResult[0])) {
         $orderDetails = $detailResult[0];
         
-        $itemsQuery = "SELECT oi.*, p.name as product_name, p.barcode,
+        $itemsQuery = "SELECT oi.*, p.name as product_name,
                 oi.item_discount, oi.quantity_returned
                 FROM order_items oi 
                 JOIN products p ON oi.product_id = p.id 
@@ -429,7 +428,6 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                                                 </td>
                                                 <td>
                                                     <strong><?php echo sanitizeInput($item['product_name']); ?></strong><br>
-                                                    <small class="text-muted">Code: <?php echo sanitizeInput($item['barcode']); ?></small>
                                                 </td>
                                                 <td>
                                                     <span class="badge bg-primary"><?php echo $qtyAvailable; ?></span>
@@ -516,10 +514,6 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                             <td><?php echo sanitizeInput($orderDetails['cashier_name']); ?></td>
                         </tr>
                         <tr>
-                            <td><strong>Order Type:</strong></td>
-                            <td><?php echo ucfirst($orderDetails['order_type']); ?></td>
-                        </tr>
-                        <tr>
                             <td><strong>Payment Method:</strong></td>
                             <td><?php echo ucfirst($orderDetails['payment_method']); ?></td>
                         </tr>
@@ -602,7 +596,6 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
                             <thead>
     <tr>
         <th>Product</th>
-        <th>Barcode</th>
         <th>Quantity</th>
         <th>Returned</th>
         <th>Unit Price</th>
@@ -619,7 +612,6 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
         ?>
         <tr class="<?php echo $isFullyReturned ? 'table-danger' : ''; ?>">
             <td><?php echo sanitizeInput($item['product_name']); ?></td>
-            <td><code><?php echo sanitizeInput($item['barcode']); ?></code></td>
             <td><?php echo $item['quantity']; ?></td>
             <td>
                 <?php if ($qtyReturned > 0): ?>

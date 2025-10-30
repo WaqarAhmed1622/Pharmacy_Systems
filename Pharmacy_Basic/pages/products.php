@@ -59,15 +59,14 @@ if (isset($_POST['ajax_search'])) {
         $whereParts[] = "p.is_active = 1";
     }
 
-    // Search filter
+    // Search filter (name, description, manufacturer)
     if (!empty($search)) {
-        $whereParts[] = "(p.name LIKE ? OR p.barcode LIKE ? OR p.description LIKE ? OR p.manufacturer LIKE ?)";
+        $whereParts[] = "(p.name LIKE ? OR p.description LIKE ? OR p.manufacturer LIKE ?)";
         $searchTerm = "%$search%";
         $params[] = $searchTerm; 
         $params[] = $searchTerm; 
         $params[] = $searchTerm;
-        $params[] = $searchTerm;
-        $types .= 'ssss';
+        $types .= 'sss';
     }
 
     // Category filter
@@ -183,7 +182,7 @@ if (isset($_POST['ajax_search'])) {
     
     if (empty($searchResults)) {
         echo '<tr>
-                <td colspan="11" class="text-center py-4">
+                            <td colspan="10" class="text-center py-4">
                     <i class="fas fa-search fa-3x text-muted mb-3"></i>
                     <h5 class="text-muted">No products found</h5>
                     <p class="text-muted">Try adjusting your search terms</p>
@@ -204,7 +203,6 @@ if (isset($_POST['ajax_search'])) {
                 echo '<br><small class="text-muted">' . sanitizeInput(substr($prod['description'], 0, 50)) . '...</small>';
             }
             echo '</td>';
-            echo '<td><code>' . sanitizeInput($prod['barcode']) . '</code></td>';
             echo '<td>' . ($prod['category_name'] ? sanitizeInput($prod['category_name']) : '<span class="text-muted">Uncategorized</span>') . '</td>';
             echo '<td>' . formatCurrency($prod['price']) . '</td>';
             echo '<td>' . formatCurrency($prod['cost']) . '</td>';
@@ -337,7 +335,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['ajax_search'])) {
     // Add or Edit
     if (isset($_POST['add_product']) || isset($_POST['edit_product'])) {
         $name = sanitizeInput($_POST['name']);
-    $barcode = sanitizeInput($_POST['barcode']);
     $categoryId = isset($_POST['category_id']) ? (int)$_POST['category_id'] : 0;
     $price = isset($_POST['price']) && is_numeric($_POST['price']) ? (float)$_POST['price'] : 0.0;
     $cost = isset($_POST['cost']) && is_numeric($_POST['cost']) ? (float)$_POST['cost'] : 0.0;
@@ -350,17 +347,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['ajax_search'])) {
 
         // Validation
         if (empty($name) || $price <= 0 || $cost <= 0) {
-    $error = 'Please fill all required fields with valid values.';
-} elseif (!empty($barcode) && !isBarcodeUnique($barcode, isset($_POST['edit_product']) ? $productId : null)) {
-    $error = 'Barcode already exists. Please use a unique barcode.';
-} else {
+            $error = 'Please fill all required fields with valid values.';
+        } else {
             if (isset($_POST['add_product'])) {
-                // Insert (is_active defaults to 1)
-                $query = "INSERT INTO products (name, barcode, category_id, price, cost, stock_quantity, min_stock_level, description, manufacturer, expiry_date, manufacturing_date) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                $params = [$name, $barcode, $categoryId, $price, $cost, $stockQuantity, $minStockLevel, $description, $manufacturer, $expiryDate, $manufacturingDate];
-                $types = 'ssiddiissss';
-
+                // Insert (is_active defaults to 1) — barcode field removed
+                $query = "INSERT INTO products (name, category_id, price, cost, stock_quantity, min_stock_level, description, manufacturer, expiry_date, manufacturing_date) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $params = [$name, $categoryId, $price, $cost, $stockQuantity, $minStockLevel, $description, $manufacturer, $expiryDate, $manufacturingDate];
+                $types = 'siddiissss';
 
                 if (executeNonQuery($query, $types, $params)) {
                     $success = 'Product added successfully.';
@@ -370,11 +364,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['ajax_search'])) {
                     $error = 'Failed to add product.';
                 }
             } else {
-                // Update
-                $query = "UPDATE products SET name = ?, barcode = ?, category_id = ?, price = ?, cost = ?, 
+                // Update — barcode removed from update
+                $query = "UPDATE products SET name = ?, category_id = ?, price = ?, cost = ?, 
 stock_quantity = ?, min_stock_level = ?, description = ?, manufacturer = ?, expiry_date = ?, manufacturing_date = ? WHERE id = ?";
-$params = [$name, $barcode, $categoryId, $price, $cost, $stockQuantity, $minStockLevel, $description, $manufacturer, $expiryDate, $manufacturingDate, $productId];
-$types = 'ssiddiissssi';
+                $params = [$name, $categoryId, $price, $cost, $stockQuantity, $minStockLevel, $description, $manufacturer, $expiryDate, $manufacturingDate, $productId];
+                $types = 'siddiissssi';
 
                 if (executeNonQuery($query, $types, $params)) {
                     $success = 'Product updated successfully.';
@@ -479,15 +473,14 @@ if ($action == 'list') {
         $whereParts[] = "p.is_active = 1";
     }
 
-    // Search filter
+    // Search filter (name, description, manufacturer)
     if (!empty($search)) {
-        $whereParts[] = "(p.name LIKE ? OR p.barcode LIKE ? OR p.description LIKE ? OR p.manufacturer LIKE ?)";
+        $whereParts[] = "(p.name LIKE ? OR p.description LIKE ? OR p.manufacturer LIKE ?)";
         $searchTerm = "%$search%";
         $params[] = $searchTerm; 
         $params[] = $searchTerm; 
         $params[] = $searchTerm;
-        $params[] = $searchTerm;
-        $types .= 'ssss';
+        $types .= 'sss';
     }
 
     // Category filter
@@ -741,7 +734,7 @@ if ($action == 'list') {
                             name="search" 
                             id="searchInput"
                             class="form-control" 
-                            placeholder="Product name, barcode, generic name, brand..."
+                            placeholder="Product name, generic name, brand..."
                             value="<?php echo isset($_GET['search']) ? sanitizeInput($_GET['search']) : ''; ?>"
                             autocomplete="off"
                         >
@@ -912,7 +905,6 @@ if ($action == 'list') {
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>Barcode</th>
                             <th>Category</th>
                             <th>Price (Rs)</th>
                             <th>Cost (Rs)</th>
@@ -926,8 +918,8 @@ if ($action == 'list') {
                     </thead>
                     <tbody id="productsTableBody">
                         <?php if (empty($products)): ?>
-                            <tr>
-                                <td colspan="11" class="text-center py-4">
+                                <tr>
+                <td colspan="10" class="text-center py-4">
                                     <i class="fas fa-box fa-3x text-muted mb-3"></i>
                                     <h5 class="text-muted">
                                         <?php echo (isset($_GET['search']) || isset($_GET['category']) || isset($_GET['show_disabled'])) ? 'No products found' : 'No products added yet'; ?>
@@ -981,7 +973,6 @@ if ($action == 'list') {
                                             <br><small class="text-muted"><?php echo sanitizeInput(substr($prod['description'], 0, 50)); ?>...</small>
                                         <?php endif; ?>
                                     </td>
-                                    <td><code><?php echo sanitizeInput($prod['barcode']); ?></code></td>
                                     <td><?php echo $prod['category_name'] ? sanitizeInput($prod['category_name']) : '<span class="text-muted">Uncategorized</span>'; ?></td>
                                     <td><?php echo formatCurrency($prod['price']); ?></td>
                                     <td><?php echo formatCurrency($prod['cost']); ?></td>
@@ -1135,7 +1126,7 @@ function performSearch(page = 1) {
     searchTimeout = setTimeout(function() {
         // Show loading
         document.getElementById('productsTableBody').innerHTML = 
-            '<tr><td colspan="11" class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i><br><small class="text-muted mt-2">Loading products...</small></td></tr>';
+            '<tr><td colspan="10" class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i><br><small class="text-muted mt-2">Loading products...</small></td></tr>';
         
         if (ajaxPagination) {
             ajaxPagination.innerHTML = '';
@@ -1202,7 +1193,7 @@ function performSearch(page = 1) {
         .catch(error => {
             console.error('Search error:', error);
             document.getElementById('productsTableBody').innerHTML = 
-                '<tr><td colspan="11" class="text-center py-4 text-danger"><i class="fas fa-exclamation-triangle fa-2x"></i><br><strong>Error loading products</strong><br><small>Please try again</small></td></tr>';
+                '<tr><td colspan="10" class="text-center py-4 text-danger"><i class="fas fa-exclamation-triangle fa-2x"></i><br><strong>Error loading products</strong><br><small>Please try again</small></td></tr>';
         });
     }, 300);
 }
@@ -1314,17 +1305,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     required
                                 >
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="barcode" class="form-label">Barcode</label>
-                                <input 
-                                    type="text" 
-                                    class="form-control barcode-input" 
-                                    id="barcode" 
-                                    name="barcode" 
-                                    value="<?php echo isset($product) ? sanitizeInput($product['barcode']) : ''; ?>" 
-                                >
-                                <small class="text-muted">Must be unique</small>
-                            </div>
+                            <!-- Barcode field removed -->
                         </div>
                         <div class="row">
                             <div class="col-md-6 mb-3">
@@ -1484,12 +1465,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </h6>
                 </div>
                 <div class="card-body">
-                    <h6>Barcode Guidelines:</h6>
-                    <ul class="small">
-                        <li>Must be unique across all products</li>
-                        <li>Can be scanned or entered manually</li>
-                        <li>Common formats: UPC, EAN, Code 128</li>
-                    </ul>
+                    <!-- Barcode guidelines removed -->
                     <h6>Stock Management:</h6>
                     <ul class="small">
                         <li>Stock updates automatically on sales</li>
@@ -1530,9 +1506,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     </h6>
                 </div>
                 <div class="card-body">
-                    <button type="button" class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="generateBarcode()">
-                        Generate Random Barcode
-                    </button>
                     <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="fillSampleData()">
                         Fill Sample Data
                     </button>
@@ -1542,16 +1515,9 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </div>
     <script>
-        // Generate random barcode
-        function generateBarcode() {
-            const barcode = Math.random().toString().substring(2, 15);
-            document.getElementById('barcode').value = barcode;
-        }
-        // Fill sample data for testing
         // Fill sample data for testing
 function fillSampleData() {
     document.getElementById('name').value = 'Sample Product';
-    document.getElementById('barcode').value = Math.random().toString().substring(2, 15);
     
     const categorySelect = document.getElementById('category_id');
     if (categorySelect.options.length > 1) {

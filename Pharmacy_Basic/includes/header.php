@@ -211,11 +211,7 @@ checkSessionTimeout();
                     <?php if (isAdmin()): ?>
                     <hr class="text-muted">
                     <small class="text-muted px-3">ADMIN ONLY</small>
-                    
-                    <a class="nav-link" href="users.php">
-                        <i class="fas fa-users"></i> User Management
-                    </a>
-                    
+                                        
                     <a class="nav-link" href="products.php">
                         <i class="fas fa-box"></i> Products
                     </a>

@@ -53,47 +53,6 @@ if (isset($_POST['update_item_discount'])) {
     }
 }
 
-// Handle barcode scan/search
-if (isset($_POST['scan_barcode'])) {
-    $barcode = sanitizeInput($_POST['barcode']);
-    
-    if (!empty($barcode)) {
-        $product = getProductByBarcode($barcode);
-        
-        if ($product) {
-            if ($product['stock_quantity'] > 0) {
-                // Add to cart or increase quantity
-                if (isset($_SESSION['cart'][$product['id']])) {
-                    if ($_SESSION['cart'][$product['id']]['quantity'] < $product['stock_quantity']) {
-                        $_SESSION['cart'][$product['id']]['quantity']++;
-                        $success = 'Product quantity updated in cart.';
-                    } else {
-                        $error = 'Not enough stock available.';
-                    }
-                } else {
-                    $_SESSION['cart'][$product['id']] = [
-                        'id' => $product['id'],
-                        'name' => $product['name'],
-                        'barcode' => $product['barcode'],
-                        'price' => $product['price'],
-                        'quantity' => 1,
-                        'stock_available' => $product['stock_quantity'],
-                        'expiry_date' => $product['expiry_date'],
-                        'manufacturer' => $product['manufacturer'],
-                        'item_discount' => 0  // Item discount can be implemented later
-
-                    ];
-                    $success = 'Product added to cart.';
-                }
-            } else {
-                $error = 'Product is out of stock.';
-            }
-        } else {
-            $error = 'Product not found.';
-        }
-    }
-}
-
 // Handle quantity updates
 if (isset($_POST['update_quantity'])) {
     $productId = (int)$_POST['product_id'];
@@ -268,23 +227,14 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0">
-                    <i class="fas fa-barcode"></i> Scan or Search Product
+                    <i class="fas fa-barcode"></i> Search Product
                 </h5>
             </div>
 
             <div class="card-body">
-               <!-- Barcode Form -->
-                <form method="POST" class="mb-3" id="barcodeForm">
-                    <div class="input-group">
-                        <input type="text" name="barcode" class="form-control barcode-input" placeholder="Scan barcode or enter product name..." autocomplete="off" autofocus>
-                        <input type="hidden" name="scan_barcode" value="1">
-                    </div>
-                    <small class="text-muted">Scan barcode or type product name and press Enter</small>
-                </form>
-                
                 <!-- Live AJAX Search -->
                 <div class="mb-3">
-                    <input type="text" id="liveSearch" class="form-control" placeholder="Search product by name or barcode...">
+                    <input type="text" id="liveSearch" class="form-control" placeholder="Search product by name...">
                     <div id="searchResults" class="mt-3"></div>
                 </div>
 
@@ -592,43 +542,8 @@ document.getElementById('liveSearch').addEventListener('keyup', function() {
     }, 300);
 });
 
-// Auto-submit barcode form on Enter
-document.querySelector('.barcode-input').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        if (this.value.trim().length > 0) {
-            this.form.submit();
-        }
-    }
-});
-
-// Auto-submit if input length reaches typical barcode length
-document.querySelector('.barcode-input').addEventListener('input', function(e) {
-    const val = this.value.trim();
-    if (/^\d{8,13}$/.test(val)) {
-        this.form.submit();
-    }
-});
-
-// Auto-focus barcode input
-$(document).ready(function() {
-    $('.barcode-input').focus();
-    $('form').on('submit', function(e) {
-        if ($(this).find('input[name="scan_barcode"]').length) {
-            setTimeout(function() {
-                $('.barcode-input').val('').focus();
-            }, 100);
-        }
-    });
-});
-
-// Keyboard shortcuts 
+// Keyboard shortcuts (F2: clear cart, F3: checkout)
 $(document).on('keydown', function(e) {
-    if (e.which === 112) {
-        e.preventDefault();
-        $('.barcode-input').focus();
-    }
-    
     if (e.which === 113 && <?php echo !empty($_SESSION['cart']) ? 'true' : 'false'; ?>) {
         e.preventDefault();
         if (confirm('Clear all items from cart?')) {

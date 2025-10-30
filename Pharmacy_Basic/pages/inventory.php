@@ -11,6 +11,14 @@ $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $error = '';
 $success = '';
 
+// Filters (from query string)
+$search = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
+$manufacturer = isset($_GET['manufacturer']) ? sanitizeInput($_GET['manufacturer']) : '';
+$expiry_status = isset($_GET['expiry_status']) ? sanitizeInput($_GET['expiry_status']) : '';
+$price_range = isset($_GET['price_range']) ? sanitizeInput($_GET['price_range']) : '';
+$non_selling = isset($_GET['non_selling']) ? (int)$_GET['non_selling'] : 0;
+$show_disabled = isset($_GET['show_disabled']) && $_GET['show_disabled'] == '1' ? 1 : 0;
+
 // Handle stock updates
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['update_stock'])) {
@@ -117,7 +125,7 @@ $outOfStockCount = count(array_filter($products, function($product) {
     </div>
     <div class="card-body">
         <div class="mb-3">
-            <input type="text" id="liveSearch" class="form-control" placeholder="🔍 Search by name, barcode, or category...">
+            <input type="text" id="liveSearch" class="form-control" placeholder="🔍 Search by name or category...">
         </div>
 
         <div class="table-responsive">
@@ -146,7 +154,6 @@ $outOfStockCount = count(array_filter($products, function($product) {
                             <tr class="<?php echo $product['stock_quantity'] <= 0 ? 'table-danger' : ($product['stock_quantity'] <= $product['min_stock_level'] ? 'table-warning' : ''); ?>">
                                 <td>
                                     <strong><?php echo sanitizeInput($product['name']); ?></strong><br>
-                                    <small class="text-muted"><?php echo sanitizeInput($product['barcode']); ?></small>
                                 </td>
                                 <td><?php echo $product['category_name'] ? sanitizeInput($product['category_name']) : '<span class="text-muted">Uncategorized</span>'; ?></td>
                                 <td><?php echo $product['stock_quantity']; ?></td>

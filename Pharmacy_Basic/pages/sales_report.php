@@ -17,12 +17,6 @@ requireAdmin();
 $salesData = getSalesDataWithRefunds($period, $customStart, $customEnd);
 $topProducts = getTopProducts($period, $customStart, $customEnd);
 
-// Get profit data
-$profitData = getProfitData($period, $customStart, $customEnd);
-$totalCost = $profitData['total_cost'];
-$totalProfit = $profitData['net_profit'];
-$profitMargin = $profitData['profit_margin'];
-
 // Get daily sales for chart (last 30 days)
 // Get daily sales for chart (last 30 days) - Net sales (sales - refunds)
 $chartData = [];
@@ -156,26 +150,6 @@ for ($i = 29; $i >= 0; $i--) {
         </div>
     </div>
 
-    <div class="col-md-3 mb-3">
-        <div class="card stats-card-profit h-100">
-            <div class="card-body text-center">
-                <i class="fas fa-money-bill-wave fa-2x mb-2"></i>
-                <h4 class="card-title"><?php echo formatCurrency($totalProfit); ?></h4>
-                <p class="card-text">Net Profit</p>
-                <small class="text-white"><?php echo round($profitMargin, 2); ?>% margin</small>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-3 mb-3">
-        <div class="card stats-card-cost h-100">
-            <div class="card-body text-center">
-                <i class="fas fa-box fa-2x mb-2"></i>
-                <h4 class="card-title"><?php echo formatCurrency($totalCost); ?></h4>
-                <p class="card-text">Total Cost</p>
-            </div>
-        </div>
-    </div>
 </div>
 
 <div class="row">
@@ -328,16 +302,7 @@ for ($i = 29; $i >= 0; $i--) {
                         <h6 class="text-muted">Generated</h6>
                         <strong><?php echo date('M j, Y H:i'); ?></strong>
                     </div>
-                    <div class="col-6">
-                        <h6 class="text-muted">Gross Profit</h6>
-                        <strong class="text-success">
-                            <?php 
-                            // Calculate estimated profit (this is a rough estimate)
-                            $estimatedProfit = $salesData['net_sales'] * 0.3; // Assuming 30% margin
-                            echo formatCurrency($estimatedProfit);
-                            ?>
-                        </strong>
-                    </div>
+
                     <div class="col-6">
                         <h6 class="text-muted">Items Sold</h6>
                         <strong>
@@ -490,27 +455,7 @@ if (ctx) {
     border-bottom: none;
 }
 
-.stats-card-profit {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: white;
-}
 
-.stats-card-profit .card-body i,
-.stats-card-profit .card-title,
-.stats-card-profit .card-text {
-    color: white;
-}
-
-.stats-card-cost {
-    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-    color: white;
-}
-
-.stats-card-cost .card-body i,
-.stats-card-cost .card-title,
-.stats-card-cost .card-text {
-    color: white;
-}
 </style>
 
 <?php require_once '../includes/footer.php'; ?>
