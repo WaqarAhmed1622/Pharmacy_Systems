@@ -5,18 +5,11 @@
  */
 
 require_once '../config/database.php';
-require_once '../includes/export.php';
 require_once '../includes/functions.php';
 
 $period = isset($_GET['period']) ? $_GET['period'] : 'today';
 $customStart = isset($_GET['start']) ? $_GET['start'] : date('Y-m-d');
 $customEnd = isset($_GET['end']) ? $_GET['end'] : date('Y-m-d');
-
-// Handle export
-if (isset($_GET['export'])) {
-    exportSalesReportToCSV($period, $customStart, $customEnd);
-    exit();
-}
 
 require_once '../includes/header.php';
 requireAdmin();
@@ -59,13 +52,10 @@ for ($i = 29; $i >= 0; $i--) {
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header">
                 <h5 class="card-title mb-0">
                     <i class="fas fa-chart-line"></i> Sales Reports
                 </h5>
-                <a href="?period=<?php echo $period; ?>&start=<?php echo $customStart; ?>&end=<?php echo $customEnd; ?>&export=1" class="btn btn-success btn-sm">
-                    <i class="fas fa-download"></i> Export Report
-                </a>
             </div>
             <div class="card-body">
                 <form method="GET" id="reportForm" class="row g-3">

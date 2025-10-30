@@ -18,8 +18,7 @@
     }
 
     // Get order details
-    $orderQuery = "SELECT o.*, u.full_name as cashier_name, 
-                    o.order_type, o.delivery_charge
+    $orderQuery = "SELECT o.*, u.full_name as cashier_name
                 FROM orders o 
                 JOIN users u ON o.cashier_id = u.id 
                 WHERE o.id = ?";
@@ -69,7 +68,7 @@
     // Tax should be calculated on amount AFTER cart discount
     $calculatedTaxAmount = $afterCartDiscount * getSetting('tax_rate', 0.10);
     // Recalculate grand total
-    $calculatedGrandTotal = $afterCartDiscount + $calculatedTaxAmount + ($order['delivery_charge'] ?? 0);
+    $calculatedGrandTotal = $afterCartDiscount + $calculatedTaxAmount;
 
     // Calculate total savings
     $totalSavings = $totalItemDiscounts + $calculatedDiscountAmount;
@@ -356,7 +355,6 @@
             <div class="receipt-info-row"><strong>Receipt #:</strong> <?php echo $order['order_number']; ?></div>
             <div class="receipt-info-row"><strong>Date:</strong> <?php echo formatDate($order['order_date'], 'M d, Y H:i'); ?></div>
             <div class="receipt-info-row"><strong>Cashier:</strong> <?php echo sanitizeInput($order['cashier_name']); ?></div>
-            <div class="receipt-info-row"><strong>Order Type:</strong> <?php echo ucfirst($order['order_type']); ?></div>
             <div class="receipt-info-row"><strong>Payment:</strong> <?php echo ucfirst($order['payment_method']); ?></div>
         </div>
 
@@ -439,14 +437,6 @@
             <span>Tax (<?php echo number_format($taxRate, 1); ?>%):</span>
             <span>Rs <?php echo number_format($calculatedTaxAmount, 2); ?></span>
         </div>
-
-        <!-- 7. Delivery charge -->
-        <?php if (!empty($order['delivery_charge']) && $order['delivery_charge'] > 0): ?>
-        <div class="total-row d-flex justify-content-between">
-            <span>Delivery Charge:</span>
-            <span>Rs <?php echo number_format($order['delivery_charge'], 2); ?></span>
-        </div>
-        <?php endif; ?>
 
         <!-- 8. Final total -->
         <div class="total-row d-flex justify-content-between fw-bold border-top mt-2 pt-2">

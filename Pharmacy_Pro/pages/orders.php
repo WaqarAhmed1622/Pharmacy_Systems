@@ -3,20 +3,12 @@
 
 require_once '../config/database.php';
 require_once '../includes/functions.php';
-require_once '../includes/export.php';
 
 $search = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
 $period = isset($_GET['period']) ? $_GET['period'] : 'all';
 $customStart = isset($_GET['start']) ? $_GET['start'] : date('Y-m-d');
 $customEnd = isset($_GET['end']) ? $_GET['end'] : date('Y-m-d');
 
-if (isset($_GET['export'])) {
-    $exportSearch = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
-    $exportPeriod = isset($_GET['period']) ? $_GET['period'] : 'all';
-    $exportStart = isset($_GET['start']) ? $_GET['start'] : date('Y-m-d');
-    $exportEnd = isset($_GET['end']) ? $_GET['end'] : date('Y-m-d');
-    exportOrdersToCSV($exportSearch, $exportPeriod, $exportStart, $exportEnd);
-}
 // Handle order status update (add this after the search params section, before the queries)
 ob_start();
 require_once '../includes/header.php';
@@ -662,9 +654,6 @@ $taxRate = getSetting('tax_rate', 0.10) * 100;
     <!-- Orders List View -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h3><i class="fas fa-receipt"></i> Orders History</h3>
-    <a href="?export=1&period=<?php echo $period; ?>&start=<?php echo $customStart; ?>&end=<?php echo $customEnd; ?>&search=<?php echo urlencode($search); ?>" class="btn btn-success">
-        <i class="fas fa-download"></i> Export to CSV
-    </a>
 </div>
     
     <!-- Search and Filter Form -->
